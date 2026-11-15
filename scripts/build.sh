@@ -76,8 +76,8 @@ step "3/6 Dépendances du cœur et vérification rapide du code de l'application
 # Un premier passage de ndk-build à vide télécharge les dépendances du cœur (libretro-common),
 # dont l'en-tête libretro.h nécessaire à l'application.
 (cd "$LIBRETRO/jni" && "$NDK/ndk-build" LITE=1 -n >/dev/null 2>&1 || true)
-LIBRETRO_H="$(find "$LIBRETRO/deps" -name libretro.h | head -1)"
-[ -n "$LIBRETRO_H" ] || { echo "libretro.h introuvable"; (cd "$LIBRETRO/jni" && "$NDK/ndk-build" LITE=1 -n | tail -40); exit 1; }
+LIBRETRO_H="$LIBRETRO/deps/libretro-common/include/libretro.h"
+[ -f "$LIBRETRO_H" ] || { echo "libretro.h introuvable"; (cd "$LIBRETRO/jni" && "$NDK/ndk-build" LITE=1 -n | tail -40); exit 1; }
 cp "$LIBRETRO_H" "$PREBUILT/include/"
 # Compilation à blanc (sans édition de liens) : détecte les erreurs en quelques secondes,
 # avant la longue compilation de ScummVM.
