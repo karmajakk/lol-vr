@@ -1,0 +1,39 @@
+name: Compiler l'APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Récupérer le code
+        run: |
+          git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" .
+          git checkout --quiet "${GITHUB_SHA}"
+
+      - name: Construire l'APK
+        run: |
+          export LOLVR_VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          export LOLVR_VERSION_NAME="0.1.${GITHUB_RUN_NUMBER}"
+          scripts/build.sh
+
+      - name: Publier l'APK
+        run: |
+          TAG="apk-${GITHUB_REF_NAME//\//-}"
+          NOTES="Compilation automatique n° ${GITHUB_RUN_NUMBER} de la branche ${GITHUB_REF_NAME} (${GITHUB_SHA::7}). Installez lol-vr.apk avec SideQuest."
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          sleep 3
+          gh release create "$TAG" build/lol-vr.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Lands of Lore VR — dernière version (${GITHUB_REF_NAME})" --notes "$NOTES" --prerelease
