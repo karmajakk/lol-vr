@@ -135,11 +135,6 @@ double nowSeconds() {
 // ---------------------------------------------------------------------------
 // Fichiers
 
-bool fileExists(const std::string &path) {
-	struct stat st;
-	return stat(path.c_str(), &st) == 0;
-}
-
 void makeDirs(const std::string &path) {
 	for (size_t i = 1; i <= path.size(); i++) {
 		if (i == path.size() || path[i] == '/') {
