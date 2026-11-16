@@ -488,6 +488,8 @@ bool CoreHost::gameState(GameState &out) const {
 	out.sfxVolume = s->sfxVolume;
 	out.hurtDamage = s->hurtDamage;
 	out.hitDamage = s->hitDamage;
+	out.loopSerial = (uint32_t)s->reserved[0];
+	out.controlMode = s->reserved[1];
 	memcpy(out.tileset, s->tileset, sizeof(out.tileset));
 	memcpy(out.sfxName, s->sfxName, sizeof(out.sfxName));
 	out.tileset[sizeof(out.tileset) - 1] = 0;

@@ -9,6 +9,7 @@ enum Environment {
 	kEnvLibrary = 0,          // bibliothèque médiévale, écran dans un cadre ouvragé
 	kEnvPassthroughFrame = 1, // la vraie pièce du joueur, écran dans le cadre
 	kEnvPassthroughCrt = 2,   // la vraie pièce du joueur, moniteur cathodique
+	kEnvWindow = 3,           // vide noir : la vue du donjon en grand, interface sur le poignet
 	kEnvCount
 };
 
@@ -44,9 +45,24 @@ struct SceneState {
 	unsigned gameTexture = 0;             // texture OpenGL de l'image du jeu (mode cathodique)
 	int gameWidth = 320, gameHeight = 200;
 
-	// À l'essai (désactivé dans l'application) : bandeau d'inventaire sur l'avant-bras gauche,
-	// qui reprend en direct la barre d'objets du bas de l'écran.
-	bool wristPanel = false;
+	// Le cadre doré autour de l'écran (faux en mode fenêtre quand la vue du donjon est affichée seule).
+	bool frameVisible = true;
+
+	// Panneaux d'interface flottants (mode fenêtre) : une portion de l'image du jeu, agrandie,
+	// avec une bordure en laiton. Repère : right/up unitaires, demi-dimensions en mètres.
+	struct Panel {
+		bool visible = false;
+		float alpha = 1.0f;
+		Vec3 center = {0, 0, 0}, right = {1, 0, 0}, up = {0, 1, 0};
+		float halfW = 0.1f, halfH = 0.05f;
+		float u0 = 0, v0 = 0, u1 = 1, v1 = 1; // portion de l'image du jeu (0..1, v vers le bas)
+	};
+	static const int kMaxPanels = 2;
+	Panel panels[kMaxPanels];
+
+	// Lueur du pointeur : repère du plan touché (par défaut, celui de l'écran).
+	Vec3 hitRight = {0, 0, 0}, hitUp = {0, 0, 0};
+	float hitRadius = 0.0f; // 0 = valeurs par défaut
 };
 
 class Scene {

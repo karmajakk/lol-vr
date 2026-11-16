@@ -1,5 +1,5 @@
 diff --git a/engines/kyra/engine/lol.cpp b/engines/kyra/engine/lol.cpp
-index 9094a563..f8899143 100644
+index 9094a563..cc98fb65 100644
 --- a/engines/kyra/engine/lol.cpp
 +++ b/engines/kyra/engine/lol.cpp
 @@ -39,6 +39,14 @@
@@ -17,7 +17,18 @@ index 9094a563..f8899143 100644
  namespace Kyra {
  
  const char *const LoLEngine::kMouseKeymapName = "lolmouse";
-@@ -3510,6 +3518,11 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
+@@ -951,6 +959,10 @@ void LoLEngine::runLoop() {
+ 			_nextScriptFunc = 0;
+ 		}
+ 
++		// lol-vr: the dungeon loop is running (reserved[0] ticks, reserved[1] = control mode)
++		g_lolvrState.reserved[0]++;
++		g_lolvrState.reserved[1] = _currentControlMode;
++
+ 		_timer->update();
+ 
+ 		checkFloatingPointerRegions();
+@@ -3510,6 +3522,11 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
  			return 0;
  
  		if (damage > 0) {
@@ -29,7 +40,7 @@ index 9094a563..f8899143 100644
  			m->hitPoints -= damage;
  			m->damageReceived = 0x8000 | damage;
  			m->flags |= 0x10;
-@@ -3565,6 +3578,12 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
+@@ -3565,6 +3582,12 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
  
  		setCharacterMagicOrHitPoints(target, 0, -damage, 1);
  

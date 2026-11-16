@@ -13,6 +13,7 @@
 
 #include "../src/proctex.h"
 #include "../src/scene.h"
+#include "../src/room.h"
 
 using namespace lolvr;
 
@@ -126,8 +127,8 @@ int main(int argc, char **argv) {
 
 	// Programme « dessous » : image du jeu (comme le calque quad) puis faux passthrough.
 	GLuint under = makeProgram(
-		"#version 300 es\nlayout(location=0) in vec3 aPos; uniform mat4 uMvp; out vec2 vUv;\n"
-		"void main(){ vUv = vec2(aPos.x + 0.5, 0.5 - aPos.y / 0.75); gl_Position = uMvp * vec4(aPos, 1.0); }",
+		"#version 300 es\nlayout(location=0) in vec3 aPos; uniform mat4 uMvp; uniform vec4 uRect; out vec2 vUv;\n"
+		"void main(){ vUv = uRect.xy + uRect.zw * vec2(aPos.x + 0.5, 0.5 - aPos.y / 0.75); gl_Position = uMvp * vec4(aPos, 1.0); }",
 		"#version 300 es\nprecision highp float; uniform sampler2D uTex; uniform float uMode; in vec2 vUv; out vec4 o;\n"
 		"void main(){ if (uMode < 0.5) { o = vec4(texture(uTex, vUv).rgb, 1.0); } else {"
 		" vec2 p = gl_FragCoord.xy / vec2(1600.0, 1400.0); vec3 wall = mix(vec3(0.55,0.52,0.47), vec3(0.78,0.76,0.72), p.y);"
@@ -182,7 +183,11 @@ int main(int argc, char **argv) {
 		{"pt_crt", kEnvPassthroughCrt, kThemeKeep, seat, 0, 0, 1.15f, true, 0.0f, 0.0f},
 		{"pt_crt_side", kEnvPassthroughCrt, kThemeKeep, {1.1f, 1.45f, -0.7f}, 35, -10, 0.8f, false, 0, 0},
 		{"frame_close", kEnvLibrary, kThemeKeep, {0.9f, 1.9f, -1.5f}, 25, -5, 0.6f, false, 0, 0},
-		{"wrist", kEnvLibrary, kThemeKeep, seat, 0, -30, 0.78f, true, 0.0f, 0.2f},
+		{"win_front", kEnvWindow, kThemeKeep, seat, 0, 0, 1.15f, false, 0, 0},
+		{"win_watch", kEnvWindow, kThemeKeep, seat, 0, -30, 0.78f, true, 0.0f, 0.2f},
+		{"win_watch_r", kEnvWindow, kThemeKeep, seat, 0, -30, 0.78f, true, 0.0f, 0.2f},
+		{"win_tablet", kEnvWindow, kThemeKeep, seat, 0, -12, 0.9f, true, 0.0f, 0.0f},
+		{"win_cut", kEnvWindow, kThemeKeep, seat, 0, 0, 1.15f, false, 0, 0},
 	};
 
 	std::vector<uint8_t> buf(W * H * 4);
@@ -195,7 +200,26 @@ int main(int argc, char **argv) {
 			continue;
 		st.environment = sh.env;
 		st.theme = sh.theme;
-		if (sh.env == kEnvPassthroughCrt) {
+		const bool win = sh.env == kEnvWindow;
+		const bool cutscene = !strcmp(sh.name, "win_cut");
+		float rect[4] = {0, 0, 1, 1};
+		float quadW = 2.4f, quadH = 1.8f;
+		st.frameVisible = true;
+		for (int i = 0; i < SceneState::kMaxPanels; i++)
+			st.panels[i].visible = false;
+		if (win && !cutscene) {
+			st.frameVisible = false;
+			rect[0] = 112.0f / 320.0f; rect[1] = 0.0f; rect[2] = 176.0f / 320.0f; rect[3] = 120.0f / 200.0f;
+			quadW = 2.0f;
+			quadH = 2.0f * 144.0f / 176.0f;
+			st.screenWidth = quadW;
+			st.screenPos = {0, 1.22f, -1.4f};
+		} else if (win) {
+			quadW = 2.6f;
+			quadH = 1.95f;
+			st.screenWidth = quadW;
+			st.screenPos = {0, 1.22f, -1.4f};
+		} else if (sh.env == kEnvPassthroughCrt) {
 			st.screenWidth = 1.0f;
 			st.screenPos = {0, 1.15f, -1.3f};
 		} else {
@@ -212,18 +236,59 @@ int main(int argc, char **argv) {
 			hand.grip = sh.grip;
 			hand.pointing = h == 1;
 		}
-		st.wristPanel = !strcmp(sh.name, "wrist");
-		if (st.wristPanel) {
-			// Geste « regarder sa montre » : avant-bras gauche en travers, dos de la main vers le haut.
-			const float deg = 3.14159265f / 180.0f;
-			st.hands[0].pos = {0.20f, 0.95f, -0.40f};
-			st.hands[0].rot = multiply(quatAxisAngle({1, 0, 0}, 38.0f * deg),
-			                           multiply(quatYaw(-90.0f * deg), quatAxisAngle({0, 0, 1}, -90.0f * deg)));
-			st.hands[0].pointing = false;
-			st.hands[1].pos = {0.30f, 0.93f, -0.30f};
-			st.hands[1].rot = multiply(quatYaw(70.0f * deg), quatAxisAngle({1, 0, 0}, 14.0f * deg));
+		const float deg = 3.14159265f / 180.0f;
+		const bool watch = !strcmp(sh.name, "win_watch") || !strcmp(sh.name, "win_watch_r");
+		const bool mirrored = !strcmp(sh.name, "win_watch_r");
+		const bool tablet = !strcmp(sh.name, "win_tablet");
+		if (watch) {
+			// Geste « regarder sa montre » : avant-bras en travers, dos de la main vers le haut.
+			int np = mirrored ? 1 : 0;
+			float sx = mirrored ? -1.0f : 1.0f;
+			st.hands[np].pos = {sx * 0.20f, 0.95f, -0.40f};
+			st.hands[np].rot = multiply(quatAxisAngle({1, 0, 0}, 38.0f * deg),
+			                            multiply(quatYaw(-sx * 90.0f * deg), quatAxisAngle({0, 0, 1}, -sx * 90.0f * deg)));
+			st.hands[np].pointing = false;
+			st.hands[1 - np].pos = {sx * 0.30f, 0.93f, -0.30f};
+			st.hands[1 - np].rot = multiply(quatYaw(sx * 70.0f * deg), quatAxisAngle({1, 0, 0}, 14.0f * deg));
+			st.hands[1 - np].pointing = true;
 		}
-		st.hitValid = sh.hands && !st.wristPanel;
+		if (tablet) {
+			st.hands[0].pos = {-0.12f, 1.12f, -0.38f};
+			st.hands[0].rot = quatAxisAngle({1, 0, 0}, 0.5f);
+			st.hands[0].pointing = false;
+			st.hands[1].pointing = true;
+		}
+		if (win && st.frameVisible == false && sh.hands) {
+			int np = (watch && mirrored) ? 1 : 0;
+			SceneState::Panel &bar = st.panels[0];
+			Vec3 c, r, u, n;
+			wristPanelFrame(np == 0, c, r, u, n);
+			if (np != 0) {
+				r = r * -1.0f;
+				u = u * -1.0f;
+			}
+			bar.center = st.hands[np].pos + rotate(st.hands[np].rot, c);
+			bar.right = rotate(st.hands[np].rot, r);
+			bar.up = rotate(st.hands[np].rot, u);
+			bar.halfW = 0.125f;
+			bar.halfH = bar.halfW * (58.0f / 234.0f) * 1.2f;
+			bar.u0 = 84.0f / 320.0f; bar.u1 = 318.0f / 320.0f; bar.v0 = 141.0f / 200.0f; bar.v1 = 199.5f / 200.0f;
+			bar.alpha = 1.0f;
+			bar.visible = true;
+			if (tablet) {
+				SceneState::Panel &tb = st.panels[1];
+				Vec3 hp = st.hands[0].pos;
+				Vec3 cc = hp + Vec3{0, 0.14f, 0};
+				Vec3 nn = normalize(sh.eye - cc);
+				Vec3 rr = normalize(cross({0, 1, 0}, nn));
+				tb.center = cc; tb.right = rr; tb.up = cross(nn, rr);
+				tb.halfW = 0.17f; tb.halfH = 0.17f * 0.75f;
+				tb.u0 = 0; tb.u1 = 1; tb.v0 = 0; tb.v1 = 1;
+				tb.alpha = 1.0f;
+				tb.visible = true;
+			}
+		}
+		st.hitValid = sh.hands && !win;
 		st.hit = st.screenPos + Vec3{0.35f, -0.2f, 0.004f};
 		st.clickPulse = 0.3f;
 		// Changement de thème : attendre la tâche de fond
@@ -251,18 +316,22 @@ int main(int argc, char **argv) {
 		glUseProgram(under);
 		glBindVertexArray(qvao);
 		if (Scene::usesQuadLayer(sh.env)) {
-			Mat4 mvp = multiply(multiply(proj, view), poseMatrix(st.screenPos, st.screenRot, st.screenWidth));
+			// Le quad de test mesure 1 x 0,75 : on l'étire à la taille réelle de la vue affichée.
+			Mat4 mvp = multiply(multiply(proj, view), poseMatrix(st.screenPos, st.screenRot, 1.0f));
+			mvp = multiply(mvp, [&] { Mat4 m = identity(); m.m[0] = quadW; m.m[5] = quadH / 0.75f; return m; }());
 			glUniformMatrix4fv(glGetUniformLocation(under, "uMvp"), 1, GL_FALSE, mvp.m);
+			glUniform4f(glGetUniformLocation(under, "uRect"), rect[0], rect[1], rect[2], rect[3]);
 			glUniform1f(glGetUniformLocation(under, "uMode"), 0.0f);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, game);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
-		if (sh.env != kEnvLibrary) {
+		if (sh.env != kEnvLibrary && !win) {
 			Mat4 full = identity();
 			full.m[0] = 2.0f;
 			full.m[5] = 2.0f / 0.75f;
 			glUniformMatrix4fv(glGetUniformLocation(under, "uMvp"), 1, GL_FALSE, full.m);
+			glUniform4f(glGetUniformLocation(under, "uRect"), 0, 0, 1, 1);
 			glUniform1f(glGetUniformLocation(under, "uMode"), 1.0f);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

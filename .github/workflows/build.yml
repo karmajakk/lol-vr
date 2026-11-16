@@ -26,7 +26,7 @@ jobs:
       - name: Construire l'APK
         run: |
           export LOLVR_VERSION_CODE="${GITHUB_RUN_NUMBER}"
-          export LOLVR_VERSION_NAME="0.2.${GITHUB_RUN_NUMBER}"
+          export LOLVR_VERSION_NAME="0.3.${GITHUB_RUN_NUMBER}"
           scripts/build.sh
 
       - name: Publier l'APK

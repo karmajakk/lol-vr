@@ -12,7 +12,7 @@ tourner le jeu original.
 |---|---|---|
 | 1 | Le jeu complet sur un écran en VR, manettes comme pointeur, son, sauvegardes | fait |
 | 2 | Bibliothèque médiévale autour de l'écran (qui change selon la zone du jeu), cadre ouvragé, gants, réalité mixte, moniteur cathodique, vibrations, son spatialisé | en test |
-| 3 | Interface pensée pour la VR : inventaire au poignet (maquette prête), carte, sorts | à venir |
+| 3 | Mode fenêtre : vue du donjon en grand, interface au poignet | en test |
 | 4 | Le donjon en vraie 3D autour de vous | plus tard |
 
 ## Installation (sans rien compiler)
@@ -55,7 +55,7 @@ simplement le nouvel APK par-dessus l'ancien.
 | X | Clavier virtuel (pour nommer une sauvegarde) |
 | Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |
 | Clic du joystick droit | Recentrer l'écran (et la pièce) devant soi |
-| **Clic bref du joystick gauche** | **Changer de décor** : bibliothèque → réalité mixte avec cadre → réalité mixte avec moniteur cathodique |
+| **Clic bref du joystick gauche** | **Changer de décor** : bibliothèque → réalité mixte avec cadre → réalité mixte avec moniteur cathodique → mode fenêtre |
 | Clic du joystick gauche maintenu + joystick droit haut/bas | Agrandir ou réduire l'écran |
 | Clic du joystick gauche maintenu + joystick droit gauche/droite | Rapprocher ou éloigner l'écran |
 
@@ -72,6 +72,13 @@ poser le moniteur cathodique.
 - **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
 - **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90
   (lignes de balayage, reflets).
+
+- **Mode fenêtre** : le vide noir, avec la vue du donjon seule, en grand (c'est ce que Gemini
+  appelait le mode « immersion »). Pendant que l'on explore, le reste de l'interface passe sur le
+  poignet de la main qui ne vise pas : une barre (portraits, barres de vie, objets) sur l'avant-bras,
+  et, quand on approche cette main du visage, une tablette avec l'image entière du jeu. On clique
+  dessus avec l'autre main. Dans les cinématiques, menus et écrans de personnage, l'image entière
+  revient avec son cadre doré.
 
 Les manettes vibrent quand le groupe frappe ou est blessé, à l'ouverture des portes, aux leviers
 et aux sorts. Le son du jeu vient de l'écran : il reste à sa place quand vous tournez la tête.

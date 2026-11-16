@@ -37,6 +37,8 @@ struct GameState {
 	int hurtDamage = 0;
 	uint32_t hitSerial = 0;   // le groupe blesse un monstre
 	int hitDamage = 0;
+	uint32_t loopSerial = 0;  // augmente à chaque tour de la boucle du donjon (vue de jeu active)
+	int controlMode = 0;      // 0 = vue normale ; autre = écran d'inventaire ou de personnage
 };
 
 class CoreHost {

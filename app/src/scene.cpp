@@ -267,7 +267,8 @@ void main() {
 }
 )";
 
-// Bandeau d'inventaire : une portion de l'image du jeu, agrandie avec des pixels nets.
+// Panneau d'interface : une portion de l'image du jeu, agrandie avec des pixels nets, dans une
+// bordure en laiton. uRect = portion (u0, v0, u1, v1) ; uBorder = largeur de la bordure en uv.
 const char *kPanelVs = R"(
 layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec3 aUvl;
@@ -283,16 +284,28 @@ const char *kPanelFs = R"(
 precision highp float;
 uniform sampler2D uGame;
 uniform vec2 uGameSize;
+uniform vec4 uRect;
+uniform vec2 uBorder;
+uniform float uAlpha;
 in vec2 vUv;
 out vec4 oColor;
 void main() {
-	vec2 texel = vUv * uGameSize;
-	vec2 ti = floor(texel);
-	vec2 tc = texel - ti - 0.5;
-	vec2 region = vec2(0.5 - 0.5 / 4.0);
-	vec2 fpp = (tc - clamp(tc, -region, region)) * 4.0 + 0.5;
-	vec3 c = texture(uGame, (ti + fpp) / uGameSize).rgb;
-	oColor = vec4(c, 1.0);
+	vec3 c;
+	vec2 outside = max(uRect.xy - vUv, vUv - uRect.zw);
+	if (outside.x > 0.0 || outside.y > 0.0) {
+		float e = clamp(max(outside.x / uBorder.x, outside.y / uBorder.y), 0.0, 1.0);
+		vec3 brass = mix(vec3(0.95, 0.72, 0.30), vec3(0.40, 0.26, 0.09), smoothstep(0.1, 1.0, e));
+		c = mix(vec3(0.08, 0.05, 0.03), brass, smoothstep(0.0, 0.18, e));
+	} else {
+		vec2 texel = vUv * uGameSize;
+		vec2 ti = floor(texel);
+		vec2 tc = texel - ti - 0.5;
+		vec2 region = vec2(0.5 - 0.5 / 4.0);
+		vec2 fpp = (tc - clamp(tc, -region, region)) * 4.0 + 0.5;
+		vec2 p = (ti + fpp) / uGameSize;
+		c = texture(uGame, clamp(p, uRect.xy, uRect.zw)).rgb;
+	}
+	oColor = vec4(c * uAlpha, uAlpha);
 }
 )";
 
@@ -423,8 +436,12 @@ struct Scene::Impl {
 	bool srgb = true;
 	GLuint litProgram = 0, fxProgram = 0, crtProgram = 0, flatProgram = 0, panelProgram = 0;
 	struct {
-		GLint viewProj, game, gameSize;
+		GLint viewProj, game, gameSize, rect, border, alpha;
 	} panel;
+	struct PanelDraw {
+		int first = 0, count = 0;
+		float rect[4] = {0, 0, 1, 1}, border[2] = {0.01f, 0.01f}, alpha = 1.0f;
+	} panelDraw[SceneState::kMaxPanels];
 	struct {
 		GLint viewProj, model, lightPos, lightCol, ambSky, ambGround, camPos, tex, exposure, fade, alphaMode;
 	} lit;
@@ -523,6 +540,9 @@ bool Scene::init(bool srgbTarget) {
 	d->panel.viewProj = glGetUniformLocation(d->panelProgram, "uViewProj");
 	d->panel.game = glGetUniformLocation(d->panelProgram, "uGame");
 	d->panel.gameSize = glGetUniformLocation(d->panelProgram, "uGameSize");
+	d->panel.rect = glGetUniformLocation(d->panelProgram, "uRect");
+	d->panel.border = glGetUniformLocation(d->panelProgram, "uBorder");
+	d->panel.alpha = glGetUniformLocation(d->panelProgram, "uAlpha");
 	d->lit.viewProj = glGetUniformLocation(d->litProgram, "uViewProj");
 	d->lit.model = glGetUniformLocation(d->litProgram, "uModel");
 	d->lit.lightPos = glGetUniformLocation(d->litProgram, "uLightPos");
@@ -722,7 +742,14 @@ void Scene::Impl::buildFx(const SceneState &s) {
 	if (s.hitValid) {
 		Vec3 sx = rotate(s.screenRot, {1, 0, 0}), sy = rotate(s.screenRot, {0, 1, 0});
 		float r = s.screenWidth * (0.014f + 0.030f * s.clickPulse);
-		Vec3 c = s.hit + screenN * 0.006f;
+		Vec3 nrm = screenN;
+		if (s.hitRadius > 0.0f) {
+			sx = s.hitRight;
+			sy = s.hitUp;
+			r = s.hitRadius * (1.0f + 1.8f * s.clickPulse);
+			nrm = cross(sx, sy);
+		}
+		Vec3 c = s.hit + nrm * 0.006f;
 		const float col[4] = {1.0f, 0.84f, 0.50f, 0.30f + 0.55f * s.clickPulse};
 		fx.quad(c - sx * r - sy * r, c + sx * r - sy * r, c + sx * r + sy * r, c - sx * r + sy * r, col, kFxGlow);
 	}
@@ -794,40 +821,26 @@ void Scene::prepare(const SceneState &s) {
 			buildGlove(d->dynBuilder, h == 0, hand.trigger, hand.grip);
 		}
 	}
-	// Bandeau d'inventaire (à l'essai) sur l'avant-bras gauche
+	// Panneaux d'interface (mode fenêtre)
 	MeshBuilder panel;
-	if (d->texturesReady && s.wristPanel && s.hands[0].visible && s.gameTexture) {
-		Vec3 c, r, u, n;
-		wristPanelFrame(true, c, r, u, n);
-		const HandState &hand = s.hands[0];
-		c = hand.pos + rotate(hand.rot, c);
-		r = rotate(hand.rot, r);
-		u = rotate(hand.rot, u);
-		n = rotate(hand.rot, n);
-		// Barre d'objets de Lands of Lore : bas de l'écran, à droite des boutons.
-		const float u0 = 84.0f / 320.0f, u1 = 318.0f / 320.0f, v0 = 177.5f / 200.0f, v1 = 199.5f / 200.0f;
-		const float hw = kWristPanelWidth * 0.5f, hh = hw * (22.0f / 234.0f) * (320.0f / 200.0f) * 0.75f;
-		Material white = mat(kTexWhite);
-		panel.quad(c - r * hw - u * hh, c + r * hw - u * hh, c + r * hw + u * hh, c - r * hw + u * hh, white, u0, v1, u1, v0);
-		// Support en cuir et bordure en laiton
-		MeshBuilder &mb = d->dynBuilder;
-		Mat4 xf = identity();
-		xf.m[0] = r.x; xf.m[1] = r.y; xf.m[2] = r.z;
-		xf.m[4] = u.x; xf.m[5] = u.y; xf.m[6] = u.z;
-		xf.m[8] = n.x; xf.m[9] = n.y; xf.m[10] = n.z;
-		xf.m[12] = c.x; xf.m[13] = c.y; xf.m[14] = c.z;
-		mb.setTransform(xf);
-		const Vec3 brass{0.85f, 0.62f, 0.25f};
-		const float b = 0.005f;
-		mb.box({0, 0, -0.006f}, {hw + b, hh + b, 0.004f}, mat(kTexLeather, {0.30f, 0.17f, 0.09f}, 14.0f));
-		mb.box({0, hh + b * 0.5f, -0.001f}, {hw + b, b * 0.5f, 0.004f}, mat(kTexMetal, brass, 10.0f, 0.04f));
-		mb.box({0, -hh - b * 0.5f, -0.001f}, {hw + b, b * 0.5f, 0.004f}, mat(kTexMetal, brass, 10.0f, 0.04f));
-		mb.box({hw + b * 0.5f, 0, -0.001f}, {b * 0.5f, hh, 0.004f}, mat(kTexMetal, brass, 10.0f, 0.04f));
-		mb.box({-hw - b * 0.5f, 0, -0.001f}, {b * 0.5f, hh, 0.004f}, mat(kTexMetal, brass, 10.0f, 0.04f));
-		// Attaches vers la manchette
-		mb.box({-hw * 0.55f, 0, -0.016f}, {0.012f, hh * 0.8f, 0.008f}, mat(kTexLeather, {0.22f, 0.12f, 0.07f}, 14.0f));
-		mb.box({hw * 0.20f, 0, -0.016f}, {0.012f, hh * 0.8f, 0.008f}, mat(kTexLeather, {0.22f, 0.12f, 0.07f}, 14.0f));
-		mb.resetTransform();
+	for (int i = 0; i < SceneState::kMaxPanels; i++) {
+		const SceneState::Panel &pn = s.panels[i];
+		Impl::PanelDraw &pd = d->panelDraw[i];
+		pd.count = 0;
+		if (!d->texturesReady || !pn.visible || pn.alpha <= 0.01f || !s.gameTexture)
+			continue;
+		const float b = 0.009f;
+		Vec3 n = cross(pn.right, pn.up);
+		float du = (pn.u1 - pn.u0) * b / (2.0f * pn.halfW), dv = (pn.v1 - pn.v0) * b / (2.0f * pn.halfH);
+		Vec3 r = pn.right * (pn.halfW + b), u = pn.up * (pn.halfH + b);
+		(void)n;
+		pd.first = (int)panel.verts.size();
+		panel.quad(pn.center - r - u, pn.center + r - u, pn.center + r + u, pn.center - r + u, mat(kTexWhite),
+		           pn.u0 - du, pn.v1 + dv, pn.u1 + du, pn.v0 - dv);
+		pd.count = (int)panel.verts.size() - pd.first;
+		pd.rect[0] = pn.u0; pd.rect[1] = pn.v0; pd.rect[2] = pn.u1; pd.rect[3] = pn.v1;
+		pd.border[0] = du; pd.border[1] = dv;
+		pd.alpha = pn.alpha;
 	}
 	uploadLitMesh(d->panelMesh, panel.verts, GL_DYNAMIC_DRAW);
 	uploadLitMesh(d->dynMesh, d->dynBuilder.verts, GL_DYNAMIC_DRAW);
@@ -879,9 +892,11 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 			glDrawArrays(GL_TRIANGLES, 0, d->roomSolid.count);
 		}
 		glUniformMatrix4fv(d->lit.model, 1, GL_FALSE, d->screenMat.m);
-		GlMesh &around = crt ? d->crtBody : d->frameMesh;
-		glBindVertexArray(around.vao);
-		glDrawArrays(GL_TRIANGLES, 0, around.count);
+		if (crt || s.frameVisible) {
+			GlMesh &around = crt ? d->crtBody : d->frameMesh;
+			glBindVertexArray(around.vao);
+			glDrawArrays(GL_TRIANGLES, 0, around.count);
+		}
 		if (d->dynMesh.count > 0) {
 			glUniformMatrix4fv(d->lit.model, 1, GL_FALSE, ident.m);
 			glBindVertexArray(d->dynMesh.vao);
@@ -905,7 +920,7 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glBindVertexArray(d->crtGlass.vao);
 		glDrawArrays(GL_TRIANGLES, 0, d->crtGlass.count);
 		glBindTexture(GL_TEXTURE_2D, 0);
-	} else {
+	} else if (s.frameVisible) {
 		// « Trou » transparent : l'image nette du jeu (calque quad) apparaît à travers.
 		glUseProgram(d->flatProgram);
 		Mat4 mvp = multiply(viewProj, d->screenMat);
@@ -915,6 +930,9 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glDrawArrays(GL_TRIANGLES, 0, d->holeMesh.count);
 	}
 
+	// --- Transparences ---
+	glEnable(GL_BLEND);
+	glDepthMask(GL_FALSE);
 	if (d->panelMesh.count > 0 && s.gameTexture) {
 		glUseProgram(d->panelProgram);
 		glUniformMatrix4fv(d->panel.viewProj, 1, GL_FALSE, viewProj.m);
@@ -922,14 +940,19 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glUniform1i(d->panel.game, 0);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, s.gameTexture);
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		glBindVertexArray(d->panelMesh.vao);
-		glDrawArrays(GL_TRIANGLES, 0, d->panelMesh.count);
+		for (int i = 0; i < SceneState::kMaxPanels; i++) {
+			const Impl::PanelDraw &pd = d->panelDraw[i];
+			if (pd.count <= 0)
+				continue;
+			glUniform4f(d->panel.rect, pd.rect[0], pd.rect[1], pd.rect[2], pd.rect[3]);
+			glUniform2f(d->panel.border, pd.border[0], pd.border[1]);
+			glUniform1f(d->panel.alpha, pd.alpha);
+			glDrawArrays(GL_TRIANGLES, pd.first, pd.count);
+		}
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
-
-	// --- Transparences ---
-	glEnable(GL_BLEND);
-	glDepthMask(GL_FALSE);
 	if (library && d->texturesReady && d->roomAlpha.count > 0) {
 		glUseProgram(d->litProgram);
 		glUniform1f(d->lit.alphaMode, 1.0f);
