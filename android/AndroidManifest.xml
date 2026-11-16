@@ -8,6 +8,8 @@
     <!-- Application VR pour casque Meta Quest -->
     <uses-feature android:name="android.hardware.vr.headtracking" android:required="true" android:version="1" />
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+    <!-- Réalité mixte (caméras couleur du casque) : facultative -->
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
 
     <!-- Accès au moteur OpenXR du casque -->
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />

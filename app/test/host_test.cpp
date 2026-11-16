@@ -66,6 +66,12 @@ int main(int argc, char **argv) {
 			savePpm(f, out + name);
 		}
 	}
+	GameState gs;
+	bool hasState = host.gameState(gs);
+	printf("état du jeu : %s niveau=%d décor='%s' sons=%u blessures=%u coups=%u\n", hasState ? "disponible" : "ABSENT",
+	       gs.level, gs.tileset, gs.sfxSerial, gs.hurtSerial, gs.hitSerial);
+	if (!hasState)
+		return 1;
 	printf("images: serial=%llu taille=%dx%d, échantillons audio non nuls=%ld, fini=%d\n",
 	       (unsigned long long)f.serial, f.width, f.height, nonSilent, (int)host.finished());
 	host.stop();

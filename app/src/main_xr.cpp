@@ -1,10 +1,12 @@
-// lol-vr — application Meta Quest (étape 1) : Lands of Lore sur un écran flottant en VR.
+// lol-vr — application Meta Quest : Lands of Lore en VR.
 //
 // Application Android 100 % native (NativeActivity) :
 //   - OpenXR pour le casque et les manettes ;
 //   - l'image du jeu est affichée sur un calque « quad » (netteté maximale) ;
-//   - un calque de projection transparent dessine le rayon de la manette ;
-//   - AAudio pour le son ;
+//   - un calque de projection dessine le décor autour de l'écran (bibliothèque médiévale,
+//     cadre, moniteur cathodique), les gants et le pointeur (voir scene.cpp) ;
+//   - la réalité mixte (passthrough) remplace la bibliothèque par la vraie pièce du joueur ;
+//   - AAudio pour le son, avec une ambiance sonore spatialisée (voir ambience.cpp) ;
 //   - le cœur ScummVM tourne dans son propre fil (voir core_host.cpp).
 
 #include <dirent.h>
@@ -37,8 +39,13 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+#include "ambience.h"
 #include "core_host.h"
 #include "libretro.h"
+#include "proctex.h"
+#include "room.h"
+#include "scene.h"
+#include "vecmath.h"
 
 #define LOG_TAG "lolvr"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -49,82 +56,26 @@
 #define GL_SRGB8_ALPHA8 0x8C43
 #endif
 
+using lolvr::Ambience;
 using lolvr::CoreHost;
 using lolvr::Frame;
+using lolvr::Mat4;
+using lolvr::Quat;
+using lolvr::Scene;
+using lolvr::SceneState;
+using lolvr::Vec3;
+using lolvr::clampf;
+using lolvr::quatYaw;
 
 namespace {
 
 // ---------------------------------------------------------------------------
-// Petites maths
+// Petites conversions
 
-struct Vec3 {
-	float x, y, z;
-};
-
-Vec3 operator+(Vec3 a, Vec3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
-Vec3 operator-(Vec3 a, Vec3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
-Vec3 operator*(Vec3 a, float s) { return {a.x * s, a.y * s, a.z * s}; }
-Vec3 cross(Vec3 a, Vec3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
-float dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-Vec3 normalize(Vec3 a) {
-	float l = sqrtf(dot(a, a));
-	return l > 1e-6f ? a * (1.0f / l) : Vec3{0, 0, 0};
-}
 Vec3 toVec3(const XrVector3f &v) { return {v.x, v.y, v.z}; }
-
-Vec3 rotate(const XrQuaternionf &q, Vec3 v) {
-	Vec3 u{q.x, q.y, q.z};
-	Vec3 t = cross(u, v) * 2.0f;
-	return v + t * q.w + cross(u, t);
-}
-
-XrQuaternionf conjugate(const XrQuaternionf &q) { return {-q.x, -q.y, -q.z, q.w}; }
-
-struct Mat4 {
-	float m[16]; // colonnes d'abord (convention OpenGL)
-};
-
-Mat4 multiply(const Mat4 &a, const Mat4 &b) {
-	Mat4 r;
-	for (int c = 0; c < 4; c++)
-		for (int row = 0; row < 4; row++) {
-			float s = 0;
-			for (int k = 0; k < 4; k++)
-				s += a.m[k * 4 + row] * b.m[c * 4 + k];
-			r.m[c * 4 + row] = s;
-		}
-	return r;
-}
-
-Mat4 projectionFromFov(const XrFovf &fov, float nearZ, float farZ) {
-	float l = tanf(fov.angleLeft), r = tanf(fov.angleRight);
-	float d = tanf(fov.angleDown), u = tanf(fov.angleUp);
-	Mat4 p;
-	memset(&p, 0, sizeof(p));
-	p.m[0] = 2.0f / (r - l);
-	p.m[5] = 2.0f / (u - d);
-	p.m[8] = (r + l) / (r - l);
-	p.m[9] = (u + d) / (u - d);
-	p.m[10] = -(farZ + nearZ) / (farZ - nearZ);
-	p.m[11] = -1.0f;
-	p.m[14] = -(2.0f * farZ * nearZ) / (farZ - nearZ);
-	return p;
-}
-
-// Matrice de vue = inverse de la pose de l'œil.
-Mat4 viewFromPose(const XrPosef &pose) {
-	XrQuaternionf inv = conjugate(pose.orientation);
-	Vec3 x = rotate(inv, {1, 0, 0});
-	Vec3 y = rotate(inv, {0, 1, 0});
-	Vec3 z = rotate(inv, {0, 0, 1});
-	Vec3 t = rotate(inv, toVec3(pose.position) * -1.0f);
-	Mat4 v;
-	v.m[0] = x.x; v.m[1] = x.y; v.m[2] = x.z; v.m[3] = 0;
-	v.m[4] = y.x; v.m[5] = y.y; v.m[6] = y.z; v.m[7] = 0;
-	v.m[8] = z.x; v.m[9] = z.y; v.m[10] = z.z; v.m[11] = 0;
-	v.m[12] = t.x; v.m[13] = t.y; v.m[14] = t.z; v.m[15] = 1;
-	return v;
-}
+Quat toQuat(const XrQuaternionf &q) { return {q.x, q.y, q.z, q.w}; }
+XrVector3f toXr(Vec3 v) { return {v.x, v.y, v.z}; }
+XrQuaternionf toXr(Quat q) { return {q.x, q.y, q.z, q.w}; }
 
 double nowSeconds() {
 	struct timespec ts;
@@ -223,10 +174,13 @@ void coreLog(int level, const char *msg) {
 
 aaudio_data_callback_result_t audioCallback(AAudioStream *, void *, void *audioData, int32_t numFrames) {
 	CoreHost::get().readAudio((int16_t *)audioData, (size_t)numFrames);
+	// Ancre le son du jeu à l'écran et ajoute l'ambiance de la pièce.
+	Ambience::get().process((int16_t *)audioData, (size_t)numFrames);
 	return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 
 AAudioStream *startAudio(int sampleRate) {
+	Ambience::get().setSampleRate(sampleRate);
 	AAudioStreamBuilder *builder = nullptr;
 	if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK || !builder)
 		return nullptr;
@@ -245,6 +199,14 @@ AAudioStream *startAudio(int sampleRate) {
 	}
 	AAudioStream_requestStart(stream);
 	return stream;
+}
+
+void stopAudio(AAudioStream *&stream) {
+	if (!stream)
+		return;
+	AAudioStream_requestStop(stream);
+	AAudioStream_close(stream);
+	stream = nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,23 +271,6 @@ void main() {
 	vec2 c = f - 0.5;
 	vec2 fpp = (c - clamp(c, -region, region)) * scale + 0.5;
 	oColor = vec4(texture(uTex, (i + fpp) / uTexSize).rgb, 1.0);
-}
-)";
-
-const char *kColorVs = R"(#version 300 es
-layout(location = 0) in vec3 aPos;
-uniform mat4 uMvp;
-void main() {
-	gl_Position = uMvp * vec4(aPos, 1.0);
-}
-)";
-
-const char *kColorFs = R"(#version 300 es
-precision mediump float;
-uniform vec4 uColor;
-out vec4 oColor;
-void main() {
-	oColor = uColor;
 }
 )";
 
@@ -397,6 +342,16 @@ struct Button {
 	bool down = false;
 };
 
+// Image du jeu dans son calque : 1600x1200 au centre, plus une marge noire.
+const int kQuadImageW = 1600, kQuadImageH = 1200, kQuadMarginX = 16, kQuadMarginY = 12;
+const float kQuadScale = (float)(kQuadImageW + 2 * kQuadMarginX) / (float)kQuadImageW;
+
+// Extension GL_EXT_multisampled_render_to_texture (anticrénelage sans copie, standard sur Quest).
+typedef void(GL_APIENTRY *RenderbufferStorageMultisampleFn)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
+typedef void(GL_APIENTRY *FramebufferTexture2DMultisampleFn)(GLenum, GLenum, GLenum, GLuint, GLint, GLsizei);
+
+const int kEnvCount = lolvr::kEnvCount;
+
 struct App {
 	android_app *androidApp = nullptr;
 	bool resumed = false;
@@ -408,6 +363,7 @@ struct App {
 	XrSession session = XR_NULL_HANDLE;
 	XrSpace localSpace = XR_NULL_HANDLE;
 	XrSpace viewSpace = XR_NULL_HANDLE;
+	XrSpace stageSpace = XR_NULL_HANDLE; // facultatif : donne la hauteur du sol
 	XrSessionState sessionState = XR_SESSION_STATE_UNKNOWN;
 	bool sessionRunning = false;
 	bool exitRequested = false;
@@ -416,6 +372,18 @@ struct App {
 	std::vector<XrViewConfigurationView> viewConfigs;
 	Swapchain eyeSwapchains[2];
 	Swapchain quadSwapchain;
+
+	// Réalité mixte (XR_FB_passthrough)
+	bool passthroughSupported = false;
+	bool passthroughActive = false;
+	XrPassthroughFB passthrough = XR_NULL_HANDLE;
+	XrPassthroughLayerFB passthroughLayer = XR_NULL_HANDLE;
+	PFN_xrCreatePassthroughFB xrCreatePassthroughFB = nullptr;
+	PFN_xrPassthroughStartFB xrPassthroughStartFB = nullptr;
+	PFN_xrPassthroughPauseFB xrPassthroughPauseFB = nullptr;
+	PFN_xrCreatePassthroughLayerFB xrCreatePassthroughLayerFB = nullptr;
+	PFN_xrPassthroughLayerResumeFB xrPassthroughLayerResumeFB = nullptr;
+	PFN_xrPassthroughLayerPauseFB xrPassthroughLayerPauseFB = nullptr;
 
 	// Actions
 	XrActionSet actionSet = XR_NULL_HANDLE;
@@ -428,45 +396,82 @@ struct App {
 	XrAction aAction = XR_NULL_HANDLE, bAction = XR_NULL_HANDLE;
 	XrAction xAction = XR_NULL_HANDLE, yAction = XR_NULL_HANDLE;
 	XrAction menuAction = XR_NULL_HANDLE;
+	XrAction hapticAction = XR_NULL_HANDLE;
 	XrSpace aimSpaces[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
 
 	// OpenGL
 	GLuint fbo = 0;
+	GLuint eyeFbo[2] = {0, 0};
+	GLuint eyeDepth[2] = {0, 0};
+	int msaa = 1; // échantillons par pixel des images des yeux
+	bool eyeTargetsChecked = false;
+	RenderbufferStorageMultisampleFn renderbufferStorageMultisample = nullptr;
+	FramebufferTexture2DMultisampleFn framebufferTexture2DMultisample = nullptr;
 	GLuint blitProgram = 0;
 	GLint blitTexSize = -1, blitOutSize = -1;
-	GLuint colorProgram = 0;
-	GLint colorMvp = -1, colorColor = -1;
-	GLuint lineVao = 0, lineVbo = 0;
 	GLuint srcTex = 0;
 	int srcTexW = 0, srcTexH = 0;
 
-	// Écran virtuel
+	// Décor
+	Scene scene;
+	SceneState ss;
+	bool sceneOk = false;
+	int environment = lolvr::kEnvLibrary;
+	bool environmentRestored = false;
+	int shownTheme = 0, wantedTheme = 0;
+	double wantedThemeSince = 0;
+	double startTime = 0;
+	Vec3 screenGlow = {0.05f, 0.05f, 0.05f};
+
+	// Écran virtuel. La taille et la distance sont mémorisées pour chaque décor.
 	bool screenPlaced = false;
-	XrPosef screenPose = {{0, 0, 0, 1}, {0, 0, -2.2f}};
-	float screenWidth = 2.4f; // mètres ; hauteur = largeur * 3/4
-	float screenDistance = 2.2f;
+	Vec3 screenPos = {0, 0, -2.2f};
+	float screenYaw = 0.0f;
+	float widths[kEnvCount] = {2.4f, 1.8f, 0.62f}; // mètres ; hauteur = largeur * 3/4
+	float distances[kEnvCount] = {2.2f, 2.0f, 0.95f};
+	Vec3 anchorPos = {0, 0, 0}; // tête du joueur au moment du placement
+	Vec3 anchorDir = {0, 0, -1}; // direction tête -> écran
+	Vec3 roomPos = {0, -1.25f, 0};
+	float floorY = -1.25f;
+	bool headValid = false;
+	Vec3 headPos = {0, 0, 0};
+	Quat headRot = {0, 0, 0, 1};
 
 	// Pointeur
 	int activeHand = kRight;
 	bool aimValid[2] = {false, false};
-	XrPosef aimPose[2];
+	XrPosef aimPose[2] = {{{0, 0, 0, 1}, {0, 0, 0}}, {{0, 0, 0, 1}, {0, 0, 0}}};
 	bool hitValid = false;
 	Vec3 hitPoint = {0, 0, 0};
 	bool triggerDown[2] = {false, false};
 	bool squeezeDown[2] = {false, false};
+	float triggerValue[2] = {0, 0}, squeezeValue[2] = {0, 0};
+	float clickPulse = 0.0f;
 
 	// Touches
 	Button kUp, kDown, kSlideL, kSlideR, kTurnL, kTurnR, kEsc, kMap, kEnter;
 	bool recenterDown = false;
+	bool zoomDown = false, zoomUsed = false;
+	double zoomSince = 0;
+	bool settingsDirty = false;
 
 	// Jeu
-	std::string systemDir, saveDir, gameRoot, gameDir;
+	std::string systemDir, saveDir, gameRoot, gameDir, settingsPath;
 	bool coreStarted = false;
 	double nextScan = 0;
 	Frame frame;
 	bool frameDirty = false;
 	AAudioStream *audio = nullptr;
+	int audioRate = 48000;
+
+	// Événements du jeu déjà traités (vibrations)
+	bool eventsPrimed = false;
+	uint32_t sfxSerial = 0, hurtSerial = 0, hitSerial = 0;
 };
+
+float &screenWidth(App &app) { return app.widths[app.environment]; }
+float &screenDistance(App &app) { return app.distances[app.environment]; }
+Quat screenRot(const App &app) { return quatYaw(app.screenYaw); }
 
 bool createSwapchain(App &app, int32_t width, int32_t height, Swapchain &out) {
 	XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -519,7 +524,8 @@ bool initActions(App &app) {
 	    !createAction(app, app.bAction, "bouton_b", "Bouton B", XR_ACTION_TYPE_BOOLEAN_INPUT, false) ||
 	    !createAction(app, app.xAction, "bouton_x", "Bouton X", XR_ACTION_TYPE_BOOLEAN_INPUT, false) ||
 	    !createAction(app, app.yAction, "bouton_y", "Bouton Y", XR_ACTION_TYPE_BOOLEAN_INPUT, false) ||
-	    !createAction(app, app.menuAction, "bouton_menu", "Bouton menu", XR_ACTION_TYPE_BOOLEAN_INPUT, false))
+	    !createAction(app, app.menuAction, "bouton_menu", "Bouton menu", XR_ACTION_TYPE_BOOLEAN_INPUT, false) ||
+	    !createAction(app, app.hapticAction, "vibration", "Vibration", XR_ACTION_TYPE_VIBRATION_OUTPUT, true))
 		return false;
 
 	struct Binding {
@@ -542,6 +548,8 @@ bool initActions(App &app) {
 		{app.xAction, "/user/hand/left/input/x/click"},
 		{app.yAction, "/user/hand/left/input/y/click"},
 		{app.menuAction, "/user/hand/left/input/menu/click"},
+		{app.hapticAction, "/user/hand/left/output/haptic"},
+		{app.hapticAction, "/user/hand/right/output/haptic"},
 	};
 	std::vector<XrActionSuggestedBinding> bindings;
 	for (const Binding &b : table) {
@@ -572,6 +580,64 @@ bool initActions(App &app) {
 	return true;
 }
 
+// Réalité mixte : facultative. En cas d'échec, l'application garde simplement la bibliothèque.
+void initPassthrough(App &app) {
+	struct Fn {
+		const char *name;
+		PFN_xrVoidFunction *ptr;
+	};
+	const Fn fns[] = {
+		{"xrCreatePassthroughFB", (PFN_xrVoidFunction *)&app.xrCreatePassthroughFB},
+		{"xrPassthroughStartFB", (PFN_xrVoidFunction *)&app.xrPassthroughStartFB},
+		{"xrPassthroughPauseFB", (PFN_xrVoidFunction *)&app.xrPassthroughPauseFB},
+		{"xrCreatePassthroughLayerFB", (PFN_xrVoidFunction *)&app.xrCreatePassthroughLayerFB},
+		{"xrPassthroughLayerResumeFB", (PFN_xrVoidFunction *)&app.xrPassthroughLayerResumeFB},
+		{"xrPassthroughLayerPauseFB", (PFN_xrVoidFunction *)&app.xrPassthroughLayerPauseFB},
+	};
+	for (const Fn &f : fns) {
+		if (XR_FAILED(xrGetInstanceProcAddr(app.instance, f.name, f.ptr)) || !*f.ptr) {
+			LOGW("réalité mixte indisponible : %s manquant", f.name);
+			return;
+		}
+	}
+	XrPassthroughCreateInfoFB ptInfo{XR_TYPE_PASSTHROUGH_CREATE_INFO_FB};
+	XrResult res = app.xrCreatePassthroughFB(app.session, &ptInfo, &app.passthrough);
+	if (XR_FAILED(res)) {
+		LOGW("réalité mixte indisponible : xrCreatePassthroughFB (%d)", (int)res);
+		return;
+	}
+	XrPassthroughLayerCreateInfoFB layerInfo{XR_TYPE_PASSTHROUGH_LAYER_CREATE_INFO_FB};
+	layerInfo.passthrough = app.passthrough;
+	layerInfo.purpose = XR_PASSTHROUGH_LAYER_PURPOSE_RECONSTRUCTION_FB;
+	res = app.xrCreatePassthroughLayerFB(app.session, &layerInfo, &app.passthroughLayer);
+	if (XR_FAILED(res)) {
+		LOGW("réalité mixte indisponible : xrCreatePassthroughLayerFB (%d)", (int)res);
+		return;
+	}
+	app.passthroughSupported = true;
+	LOGI("réalité mixte disponible");
+}
+
+// Allume ou éteint les caméras du casque selon le décor choisi.
+void setPassthrough(App &app, bool on) {
+	if (!app.passthroughSupported || on == app.passthroughActive)
+		return;
+	if (on) {
+		XrResult res = app.xrPassthroughStartFB(app.passthrough);
+		if (XR_SUCCEEDED(res))
+			res = app.xrPassthroughLayerResumeFB(app.passthroughLayer);
+		if (XR_FAILED(res)) {
+			LOGW("démarrage de la réalité mixte impossible (%d)", (int)res);
+			app.passthroughSupported = false;
+			return;
+		}
+	} else {
+		app.xrPassthroughLayerPauseFB(app.passthroughLayer);
+		app.xrPassthroughPauseFB(app.passthrough);
+	}
+	app.passthroughActive = on;
+}
+
 bool initXr(App &app) {
 	ANativeActivity *activity = app.androidApp->activity;
 
@@ -583,22 +649,38 @@ bool initXr(App &app) {
 	loaderInfo.applicationContext = activity->clazz;
 	XR_CHECK(initLoader((const XrLoaderInitInfoBaseHeaderKHR *)&loaderInfo));
 
-	const char *extensions[] = {
+	// Extensions facultatives proposées par le casque
+	bool hasPassthrough = false;
+	{
+		uint32_t count = 0;
+		if (XR_SUCCEEDED(xrEnumerateInstanceExtensionProperties(nullptr, 0, &count, nullptr)) && count > 0) {
+			std::vector<XrExtensionProperties> props(count, XrExtensionProperties{XR_TYPE_EXTENSION_PROPERTIES});
+			if (XR_SUCCEEDED(xrEnumerateInstanceExtensionProperties(nullptr, count, &count, props.data()))) {
+				for (const XrExtensionProperties &p : props)
+					if (!strcmp(p.extensionName, XR_FB_PASSTHROUGH_EXTENSION_NAME))
+						hasPassthrough = true;
+			}
+		}
+	}
+
+	std::vector<const char *> extensions = {
 		XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
 		XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
 	};
+	if (hasPassthrough)
+		extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
 	XrInstanceCreateInfoAndroidKHR androidInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
 	androidInfo.applicationVM = activity->vm;
 	androidInfo.applicationActivity = activity->clazz;
 	XrInstanceCreateInfo instanceInfo{XR_TYPE_INSTANCE_CREATE_INFO};
 	instanceInfo.next = &androidInfo;
 	strcpy(instanceInfo.applicationInfo.applicationName, "Lands of Lore VR");
-	instanceInfo.applicationInfo.applicationVersion = 1;
+	instanceInfo.applicationInfo.applicationVersion = 2;
 	strcpy(instanceInfo.applicationInfo.engineName, "lol-vr");
-	instanceInfo.applicationInfo.engineVersion = 1;
+	instanceInfo.applicationInfo.engineVersion = 2;
 	instanceInfo.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
-	instanceInfo.enabledExtensionCount = 2;
-	instanceInfo.enabledExtensionNames = extensions;
+	instanceInfo.enabledExtensionCount = (uint32_t)extensions.size();
+	instanceInfo.enabledExtensionNames = extensions.data();
 	XR_CHECK(xrCreateInstance(&instanceInfo, &app.instance));
 
 	XrSystemGetInfo systemInfo{XR_TYPE_SYSTEM_GET_INFO};
@@ -626,6 +708,25 @@ bool initXr(App &app) {
 	XR_CHECK(xrCreateReferenceSpace(app.session, &spaceInfo, &app.localSpace));
 	spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
 	XR_CHECK(xrCreateReferenceSpace(app.session, &spaceInfo, &app.viewSpace));
+	// L'espace « stage » a son origine au sol : il sert à poser la bibliothèque à la bonne hauteur.
+	{
+		uint32_t count = 0;
+		if (XR_SUCCEEDED(xrEnumerateReferenceSpaces(app.session, 0, &count, nullptr)) && count > 0) {
+			std::vector<XrReferenceSpaceType> types(count);
+			if (XR_SUCCEEDED(xrEnumerateReferenceSpaces(app.session, count, &count, types.data()))) {
+				for (XrReferenceSpaceType t : types) {
+					if (t != XR_REFERENCE_SPACE_TYPE_STAGE)
+						continue;
+					spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+					if (XR_FAILED(xrCreateReferenceSpace(app.session, &spaceInfo, &app.stageSpace)))
+						app.stageSpace = XR_NULL_HANDLE;
+				}
+			}
+		}
+	}
+
+	if (hasPassthrough)
+		initPassthrough(app);
 
 	// Format des images : sRGB si possible (couleurs fidèles et filtrage correct).
 	uint32_t formatCount = 0;
@@ -652,10 +753,60 @@ bool initXr(App &app) {
 			return false;
 	}
 	// 1600x1200 = 320x200 agrandi 5x en largeur et 6x en hauteur : pixels nets, format 4:3 d'origine.
-	if (!createSwapchain(app, 1600, 1200, app.quadSwapchain))
+	// Une marge noire entoure l'image ; elle reste cachée sous le cadre et évite tout liseré
+	// transparent au bord de l'écran quand la tête bouge vite.
+	if (!createSwapchain(app, kQuadImageW + 2 * kQuadMarginX, kQuadImageH + 2 * kQuadMarginY, app.quadSwapchain))
 		return false;
 
 	return initActions(app);
+}
+
+// Tampons de profondeur des deux yeux (le décor est en 3D), anticrénelés si possible.
+void createEyeDepth(App &app) {
+	for (int eye = 0; eye < 2; eye++) {
+		if (!app.eyeFbo[eye])
+			glGenFramebuffers(1, &app.eyeFbo[eye]);
+		if (app.eyeDepth[eye])
+			glDeleteRenderbuffers(1, &app.eyeDepth[eye]);
+		glGenRenderbuffers(1, &app.eyeDepth[eye]);
+		glBindRenderbuffer(GL_RENDERBUFFER, app.eyeDepth[eye]);
+		const Swapchain &sc = app.eyeSwapchains[eye];
+		if (app.msaa > 1)
+			app.renderbufferStorageMultisample(GL_RENDERBUFFER, app.msaa, GL_DEPTH_COMPONENT24, sc.width, sc.height);
+		else
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sc.width, sc.height);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, app.eyeFbo[eye]);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, app.eyeDepth[eye]);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void attachEyeColor(App &app, GLuint texture) {
+	if (app.msaa > 1)
+		app.framebufferTexture2DMultisample(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0, app.msaa);
+	else
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+}
+
+// Lie l'image d'un œil comme destination du rendu. Au premier passage, vérifie que
+// l'anticrénelage est accepté par le casque ; sinon on s'en passe.
+void bindEyeTarget(App &app, int eye, GLuint texture) {
+	glBindFramebuffer(GL_FRAMEBUFFER, app.eyeFbo[eye]);
+	attachEyeColor(app, texture);
+	if (app.eyeTargetsChecked)
+		return;
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE && app.msaa > 1) {
+		LOGW("anticrénelage refusé : rendu sans anticrénelage");
+		app.msaa = 1;
+		createEyeDepth(app);
+		glBindFramebuffer(GL_FRAMEBUFFER, app.eyeFbo[eye]);
+		attachEyeColor(app, texture);
+	}
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		LOGE("image de l'œil %d inutilisable (0x%x)", eye, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+	if (eye == 1)
+		app.eyeTargetsChecked = true;
 }
 
 bool initGl(App &app) {
@@ -663,21 +814,23 @@ bool initGl(App &app) {
 	app.blitProgram = linkProgram(kBlitVs, kBlitFs);
 	app.blitTexSize = glGetUniformLocation(app.blitProgram, "uTexSize");
 	app.blitOutSize = glGetUniformLocation(app.blitProgram, "uOutSize");
-	app.colorProgram = linkProgram(kColorVs, kColorFs);
-	app.colorMvp = glGetUniformLocation(app.colorProgram, "uMvp");
-	app.colorColor = glGetUniformLocation(app.colorProgram, "uColor");
-	glGenVertexArrays(1, &app.lineVao);
-	glGenBuffers(1, &app.lineVbo);
-	glBindVertexArray(app.lineVao);
-	glBindBuffer(GL_ARRAY_BUFFER, app.lineVbo);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-	glBindVertexArray(0);
 	glGenTextures(1, &app.srcTex);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_BLEND);
-	return true;
+
+	const char *ext = (const char *)glGetString(GL_EXTENSIONS);
+	if (ext && strstr(ext, "GL_EXT_multisampled_render_to_texture")) {
+		app.renderbufferStorageMultisample = (RenderbufferStorageMultisampleFn)eglGetProcAddress("glRenderbufferStorageMultisampleEXT");
+		app.framebufferTexture2DMultisample = (FramebufferTexture2DMultisampleFn)eglGetProcAddress("glFramebufferTexture2DMultisampleEXT");
+		if (app.renderbufferStorageMultisample && app.framebufferTexture2DMultisample)
+			app.msaa = 4;
+	}
+	LOGI("anticrénelage : x%d", app.msaa);
+	createEyeDepth(app);
+
+	app.sceneOk = app.scene.init(app.srgb);
+	return app.sceneOk;
 }
 
 // ---------------------------------------------------------------------------
@@ -722,10 +875,8 @@ void updateGame(App &app) {
 			cfg.log = coreLog;
 			lolvr::renderMessage(app.frame, "Lands of Lore VR", "Démarrage du jeu…");
 			app.frameDirty = true;
-			if (host.start(cfg)) {
+			if (host.start(cfg))
 				app.coreStarted = true;
-				app.audio = startAudio(host.sampleRate());
-			}
 		} else if (app.frame.serial == 0) {
 			showMissingFilesMessage(app);
 		}
@@ -733,6 +884,12 @@ void updateGame(App &app) {
 	}
 	if (host.fetchFrame(app.frame))
 		app.frameDirty = true;
+	// Le son est ouvert dès le lancement (ambiance) ; on le rouvre si le jeu utilise une autre fréquence.
+	if (host.sampleRate() != app.audioRate) {
+		stopAudio(app.audio);
+		app.audioRate = host.sampleRate();
+		app.audio = startAudio(app.audioRate);
+	}
 	if (host.finished() && !app.exitRequested) {
 		LOGI("ScummVM s'est terminé : fermeture de l'application");
 		app.exitRequested = true;
@@ -786,36 +943,250 @@ void setKey(Button &b, bool down, unsigned key, unsigned mods = 0) {
 	CoreHost::get().key(key, down, mods);
 }
 
-void placeScreen(App &app, const XrPosef &head) {
-	Vec3 fwd = rotate(head.orientation, {0, 0, -1});
-	float yaw = atan2f(-fwd.x, -fwd.z);
-	XrQuaternionf q{0, sinf(yaw * 0.5f), 0, cosf(yaw * 0.5f)};
-	Vec3 flat = rotate(q, {0, 0, -1});
-	Vec3 pos = toVec3(head.position) + flat * app.screenDistance;
-	pos.y = head.position.y - 0.05f;
-	app.screenPose.orientation = q;
-	app.screenPose.position = {pos.x, pos.y, pos.z};
+// ---------------------------------------------------------------------------
+// Réglages mémorisés (décor choisi, taille et distance de l'écran)
+
+struct Limits {
+	float wMin, wMax, dMin, dMax;
+};
+// Dans la bibliothèque, l'écran doit tenir entre les étagères et devant le mur du fond.
+const Limits kLimits[kEnvCount] = {{1.2f, 3.0f, 1.5f, 2.9f}, {0.5f, 5.0f, 0.5f, 5.0f}, {0.25f, 2.0f, 0.35f, 3.0f}};
+
+void loadSettings(App &app, int &environment) {
+	FILE *f = fopen(app.settingsPath.c_str(), "r");
+	if (!f)
+		return;
+	int env = 0;
+	if (fscanf(f, " decor %d", &env) == 1 && env >= 0 && env < kEnvCount)
+		environment = env;
+	for (int i = 0; i < kEnvCount; i++) {
+		float w = 0, d = 0;
+		if (fscanf(f, " ecran %f %f", &w, &d) != 2)
+			break;
+		if (w >= kLimits[i].wMin && w <= kLimits[i].wMax)
+			app.widths[i] = w;
+		if (d >= kLimits[i].dMin && d <= kLimits[i].dMax)
+			app.distances[i] = d;
+	}
+	fclose(f);
+}
+
+void saveSettings(App &app) {
+	app.settingsDirty = false;
+	FILE *f = fopen(app.settingsPath.c_str(), "w");
+	if (!f)
+		return;
+	fprintf(f, "decor %d\n", app.environment);
+	for (int i = 0; i < kEnvCount; i++)
+		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
+	fclose(f);
+}
+
+// ---------------------------------------------------------------------------
+// Placement de l'écran et de la pièce
+
+void updateHead(App &app, XrTime time) {
+	XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};
+	app.headValid = XR_SUCCEEDED(xrLocateSpace(app.viewSpace, app.localSpace, time, &head)) &&
+	                (head.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) &&
+	                (head.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT);
+	if (app.headValid) {
+		app.headPos = toVec3(head.pose.position);
+		app.headRot = toQuat(head.pose.orientation);
+	}
+}
+
+// Hauteur du sol : donnée par le casque si possible, sinon on suppose un joueur assis.
+void updateFloor(App &app, XrTime time) {
+	float y = app.headPos.y - 1.25f;
+	if (app.stageSpace != XR_NULL_HANDLE) {
+		XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+		if (XR_SUCCEEDED(xrLocateSpace(app.stageSpace, app.localSpace, time, &loc)) &&
+		    (loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
+			float below = app.headPos.y - loc.pose.position.y;
+			if (below > 0.6f && below < 2.3f)
+				y = loc.pose.position.y;
+		}
+	}
+	app.floorY = y;
+}
+
+// Place l'écran devant le joueur. newAnchor : repart de la position et du regard actuels
+// (premier affichage, recentrage, changement de décor) ; sinon seule la distance a changé.
+void placeScreen(App &app, bool newAnchor) {
+	bool library = app.environment == lolvr::kEnvLibrary;
+	if (newAnchor) {
+		Vec3 fwd = rotate(app.headRot, {0, 0, -1});
+		float yaw = atan2f(-fwd.x, -fwd.z);
+		Vec3 flat = rotate(quatYaw(yaw), {0, 0, -1});
+		app.screenYaw = yaw;
+		app.anchorPos = app.headPos;
+		if (library) {
+			app.anchorDir = flat;
+		} else {
+			// En réalité mixte, l'écran se pose là où l'on regarde (sur un bureau, par exemple).
+			float pitch = clampf(asinf(clampf(fwd.y, -1.0f, 1.0f)), -0.6f, 0.45f);
+			app.anchorDir = flat * cosf(pitch) + Vec3{0, sinf(pitch), 0};
+		}
+		app.roomPos = {app.headPos.x, app.floorY, app.headPos.z};
+	}
+	float w = screenWidth(app);
+	Vec3 pos = app.anchorPos + app.anchorDir * screenDistance(app);
+	if (library) {
+		// Juste sous la ligne des yeux, sans jamais toucher le plancher.
+		pos.y = app.anchorPos.y - 0.05f;
+		float minY = app.floorY + 0.375f * w * 1.2f + 0.12f;
+		if (pos.y < minY)
+			pos.y = minY;
+	}
+	app.screenPos = pos;
 	app.screenPlaced = true;
 }
 
-void updateInput(App &app, XrTime time, float dt) {
+void setEnvironment(App &app, int env, XrTime time) {
+	if (env < 0 || env >= kEnvCount)
+		env = lolvr::kEnvLibrary;
+	if (env != lolvr::kEnvLibrary && !app.passthroughSupported)
+		env = lolvr::kEnvLibrary;
+	setPassthrough(app, env != lolvr::kEnvLibrary);
+	if (env != lolvr::kEnvLibrary && !app.passthroughActive)
+		env = lolvr::kEnvLibrary;
+	app.environment = env;
+	LOGI("décor : %d", env);
+	if (app.headValid) {
+		updateFloor(app, time);
+		placeScreen(app, true);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Vibrations
+
+void pulse(App &app, int hand, float amplitude, float seconds) {
+	if (app.sessionState != XR_SESSION_STATE_FOCUSED || app.hapticAction == XR_NULL_HANDLE)
+		return;
+	XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
+	vibration.amplitude = clampf(amplitude, 0.0f, 1.0f);
+	vibration.duration = (XrDuration)(seconds * 1e9f);
+	vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+	XrHapticActionInfo info{XR_TYPE_HAPTIC_ACTION_INFO};
+	info.action = app.hapticAction;
+	info.subactionPath = app.handPaths[hand];
+	xrApplyHapticFeedback(app.session, &info, (const XrHapticBaseHeader *)&vibration);
+}
+
+enum SfxKind { kSfxNone = 0, kSfxDoor, kSfxMechanism, kSfxSwing, kSfxSpell, kSfxExplosion };
+
+// Classe un effet sonore du jeu d'après le nom de son fichier (version CD).
+int classifySfx(const char *name) {
+	struct Rule {
+		const char *prefix;
+		int kind;
+	};
+	static const Rule rules[] = {
+		{"DOOR", kSfxDoor}, {"DOR", kSfxDoor}, {"MTLDR", kSfxDoor}, {"PORTCUL", kSfxDoor},
+		{"LEVER", kSfxMechanism}, {"PRESS", kSfxMechanism}, {"PLATE", kSfxMechanism}, {"KEYOPEN", kSfxMechanism},
+		{"KEYLOCK", kSfxMechanism}, {"LOKPICK", kSfxMechanism}, {"CHEST", kSfxMechanism}, {"OPENBOX", kSfxMechanism},
+		{"SWING", kSfxSwing}, {"SHWING", kSfxSwing}, {"NUNCHUK", kSfxSwing}, {"THROW", kSfxSwing},
+		{"CROSSBOW", kSfxSwing}, {"BOW", kSfxSwing},
+		{"FIRESPL", kSfxSpell}, {"LITENIN", kSfxSpell}, {"ICESPEL", kSfxSpell}, {"SPELL", kSfxSpell},
+		{"3BOLTC", kSfxSpell}, {"2BOLTC", kSfxSpell}, {"1BOLTC", kSfxSpell}, {"DAWNSPL", kSfxSpell},
+		{"HEAL", kSfxSpell}, {"SHIELD", kSfxSpell}, {"MORPH", kSfxSpell},
+		{"EXPLODE", kSfxExplosion},
+	};
+	if (!name || !name[0])
+		return kSfxNone;
+	for (const Rule &r : rules)
+		if (!strncasecmp(name, r.prefix, strlen(r.prefix)))
+			return r.kind;
+	return kSfxNone;
+}
+
+// Suit ce qui se passe dans le jeu : zone traversée (décor), coups et sons (vibrations).
+void updateGameEvents(App &app, double now) {
+	lolvr::GameState gs;
+	if (!app.coreStarted || !CoreHost::get().gameState(gs))
+		return;
+
+	// Le décor change une fois la nouvelle zone bien installée (pas pendant un chargement).
+	int theme = lolvr::themeFromGame(gs.tileset, gs.level);
+	if (theme != app.wantedTheme) {
+		app.wantedTheme = theme;
+		app.wantedThemeSince = now;
+	}
+	if (app.shownTheme != app.wantedTheme && now - app.wantedThemeSince > 0.75) {
+		app.shownTheme = app.wantedTheme;
+		LOGI("zone du jeu : %s (niveau %d) -> décor « %s »", gs.tileset, gs.level, lolvr::themeInfo(app.shownTheme).name);
+	}
+
+	if (!app.eventsPrimed) {
+		app.eventsPrimed = true;
+		app.sfxSerial = gs.sfxSerial;
+		app.hurtSerial = gs.hurtSerial;
+		app.hitSerial = gs.hitSerial;
+		return;
+	}
+	int hand = app.activeHand, other = 1 - hand;
+	if (gs.hurtSerial != app.hurtSerial) {
+		// Un compagnon est blessé : forte secousse dans les deux mains.
+		app.hurtSerial = gs.hurtSerial;
+		float a = clampf(0.55f + (float)gs.hurtDamage / 60.0f, 0.55f, 1.0f);
+		pulse(app, kLeft, a, 0.22f);
+		pulse(app, kRight, a, 0.22f);
+	}
+	if (gs.hitSerial != app.hitSerial) {
+		// Le groupe touche un monstre : coup sec dans la main qui a frappé.
+		app.hitSerial = gs.hitSerial;
+		pulse(app, hand, 0.75f, 0.07f);
+		pulse(app, other, 0.25f, 0.05f);
+	}
+	if (gs.sfxSerial != app.sfxSerial) {
+		app.sfxSerial = gs.sfxSerial;
+		float v = 0.4f + 0.6f * clampf((float)gs.sfxVolume / 255.0f, 0.0f, 1.0f);
+		switch (classifySfx(gs.sfxName)) {
+		case kSfxDoor:
+			pulse(app, kLeft, 0.40f * v, 0.28f);
+			pulse(app, kRight, 0.40f * v, 0.28f);
+			break;
+		case kSfxMechanism:
+			pulse(app, hand, 0.40f * v, 0.05f);
+			break;
+		case kSfxSwing:
+			pulse(app, hand, 0.35f * v, 0.06f);
+			break;
+		case kSfxSpell:
+			pulse(app, kLeft, 0.50f * v, 0.18f);
+			pulse(app, kRight, 0.50f * v, 0.18f);
+			break;
+		case kSfxExplosion:
+			pulse(app, kLeft, 1.0f * v, 0.30f);
+			pulse(app, kRight, 1.0f * v, 0.30f);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manettes
+
+void updateInput(App &app, XrTime time, float dt, double now) {
 	XrActiveActionSet active{app.actionSet, XR_NULL_PATH};
 	XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
 	sync.countActiveActionSets = 1;
 	sync.activeActionSets = &active;
 	xrSyncActions(app.session, &sync);
 
-	// Position de la tête : place l'écran au premier passage et sur demande.
-	XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};
-	bool headValid = XR_SUCCEEDED(xrLocateSpace(app.viewSpace, app.localSpace, time, &head)) &&
-	                 (head.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) &&
-	                 (head.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT);
+	// Clic du joystick droit : recentrer l'écran (et la pièce) devant soi.
 	bool recenter = getBool(app, app.stickClickAction, kRight);
-	if (headValid && (!app.screenPlaced || (recenter && !app.recenterDown)))
-		placeScreen(app, head.pose);
+	if (app.headValid && recenter && !app.recenterDown) {
+		updateFloor(app, time);
+		placeScreen(app, true);
+	}
 	app.recenterDown = recenter;
 
-	// Rayons des manettes
+	// Position des manettes (les gants les suivent)
 	for (int h = 0; h < 2; h++) {
 		XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
 		app.aimValid[h] = XR_SUCCEEDED(xrLocateSpace(app.aimSpaces[h], app.localSpace, time, &loc)) &&
@@ -826,44 +1197,61 @@ void updateInput(App &app, XrTime time, float dt) {
 	}
 
 	// Gâchette = clic gauche, poignée = clic droit. La main qui clique devient le pointeur.
-	bool trigger[2], squeeze[2];
+	bool clicked[2] = {false, false};
 	for (int h = 0; h < 2; h++) {
-		trigger[h] = threshold(app.triggerDown[h], getFloat(app, app.triggerAction, h));
-		squeeze[h] = threshold(app.squeezeDown[h], getFloat(app, app.squeezeAction, h));
-		bool pressedNow = (trigger[h] && !app.triggerDown[h]) || (squeeze[h] && !app.squeezeDown[h]);
+		app.triggerValue[h] = getFloat(app, app.triggerAction, h);
+		app.squeezeValue[h] = getFloat(app, app.squeezeAction, h);
+		bool trigger = threshold(app.triggerDown[h], app.triggerValue[h]);
+		bool squeeze = threshold(app.squeezeDown[h], app.squeezeValue[h]);
+		bool pressedNow = (trigger && !app.triggerDown[h]) || (squeeze && !app.squeezeDown[h]);
 		int other = 1 - h;
 		if (pressedNow && app.aimValid[h] && !app.triggerDown[other] && !app.squeezeDown[other])
 			app.activeHand = h;
-		app.triggerDown[h] = trigger[h];
-		app.squeezeDown[h] = squeeze[h];
+		clicked[h] = pressedNow;
+		app.triggerDown[h] = trigger;
+		app.squeezeDown[h] = squeeze;
 	}
 	if (!app.aimValid[app.activeHand] && app.aimValid[1 - app.activeHand])
 		app.activeHand = 1 - app.activeHand;
 
-	// Intersection du rayon avec l'écran
+	// Le pointeur part du bout de l'index du gant et va jusqu'à l'écran.
 	app.hitValid = false;
 	int hand = app.activeHand;
-	float screenHeight = app.screenWidth * 0.75f;
+	float w = screenWidth(app), h = w * 0.75f;
 	if (app.aimValid[hand] && app.screenPlaced) {
-		XrQuaternionf inv = conjugate(app.screenPose.orientation);
-		Vec3 origin = rotate(inv, toVec3(app.aimPose[hand].position) - toVec3(app.screenPose.position));
-		Vec3 dir = rotate(inv, rotate(app.aimPose[hand].orientation, {0, 0, -1}));
+		bool crt = app.environment == lolvr::kEnvPassthroughCrt;
+		Quat inv = conjugate(screenRot(app));
+		Quat aimRot = toQuat(app.aimPose[hand].orientation);
+		Vec3 tip = toVec3(app.aimPose[hand].position) + rotate(aimRot, lolvr::gloveFingertip(hand == kLeft, 0.0f));
+		Vec3 origin = rotate(inv, tip - app.screenPos);
+		Vec3 dir = rotate(inv, rotate(aimRot, {0, 0, -1}));
 		if (dir.z < -1e-4f && origin.z > 0.0f) {
-			float t = -origin.z / dir.z;
-			Vec3 hit = origin + dir * t;
-			float u = hit.x / app.screenWidth + 0.5f;
-			float v = 0.5f - hit.y / screenHeight;
+			// La dalle du moniteur cathodique est bombée : on affine le point d'impact.
+			float zPlane = 0.0f;
+			Vec3 hit = origin;
+			for (int it = 0; it < (crt ? 3 : 1); it++) {
+				float t = (zPlane - origin.z) / dir.z;
+				hit = origin + dir * t;
+				if (crt)
+					zPlane = w * lolvr::crtGlassZ(hit.x / w, hit.y / w);
+			}
+			float u = hit.x / w + 0.5f;
+			float v = 0.5f - hit.y / h;
 			if (u > -0.15f && u < 1.15f && v > -0.15f && v < 1.15f) {
-				u = fminf(fmaxf(u, 0.0f), 1.0f);
-				v = fminf(fmaxf(v, 0.0f), 1.0f);
+				u = clampf(u, 0.0f, 1.0f);
+				v = clampf(v, 0.0f, 1.0f);
 				CoreHost::get().setPointer(u, v);
-				Vec3 local{(u - 0.5f) * app.screenWidth, (0.5f - v) * screenHeight, 0.004f};
-				app.hitPoint = rotate(app.screenPose.orientation, local) + toVec3(app.screenPose.position);
+				Vec3 local{(u - 0.5f) * w, (0.5f - v) * h, zPlane + 0.004f};
+				app.hitPoint = rotate(screenRot(app), local) + app.screenPos;
 				app.hitValid = true;
 			}
 		}
 	}
 	CoreHost::get().setMouseButtons(app.triggerDown[hand] && app.hitValid, app.squeezeDown[hand] && app.hitValid);
+	if (clicked[hand] && app.hitValid) {
+		app.clickPulse = 1.0f;
+		pulse(app, hand, 0.28f, 0.018f);
+	}
 
 	// Joysticks : gauche = avancer/reculer/pas de côté, droit = tourner.
 	XrVector2f left = getStick(app, kLeft);
@@ -876,11 +1264,32 @@ void updateInput(App &app, XrTime time, float dt) {
 	setKey(app.kTurnL, !zoomMode && threshold(app.kTurnL.down, -right.x), RETROK_HOME);
 	setKey(app.kTurnR, !zoomMode && threshold(app.kTurnR.down, right.x), RETROK_PAGEUP);
 
-	// Clic du joystick gauche maintenu + joystick droit haut/bas : taille de l'écran.
-	if (zoomMode && fabsf(right.y) > 0.3f) {
-		app.screenWidth *= 1.0f + right.y * 0.8f * dt;
-		app.screenWidth = fminf(fmaxf(app.screenWidth, 0.8f), 6.0f);
+	// Clic du joystick gauche :
+	//   - maintenu + joystick droit haut/bas : taille de l'écran ; gauche/droite : distance ;
+	//   - simple clic bref : décor suivant (bibliothèque, réalité mixte, moniteur cathodique).
+	if (zoomMode && !app.zoomDown) {
+		app.zoomSince = now;
+		app.zoomUsed = false;
 	}
+	if (zoomMode) {
+		const Limits &lim = kLimits[app.environment];
+		if (fabsf(right.y) > 0.3f && fabsf(right.y) >= fabsf(right.x)) {
+			screenWidth(app) = clampf(w * (1.0f + right.y * 0.8f * dt), lim.wMin, lim.wMax);
+			app.zoomUsed = true;
+		} else if (fabsf(right.x) > 0.3f) {
+			screenDistance(app) = clampf(screenDistance(app) * (1.0f + right.x * 0.6f * dt), lim.dMin, lim.dMax);
+			app.zoomUsed = true;
+		}
+		if (app.zoomUsed)
+			placeScreen(app, false);
+	} else if (app.zoomDown) {
+		if (!app.zoomUsed && now - app.zoomSince < 0.6) {
+			setEnvironment(app, (app.environment + 1) % kEnvCount, time);
+			pulse(app, kLeft, 0.3f, 0.03f);
+		}
+		app.settingsDirty = true;
+	}
+	app.zoomDown = zoomMode;
 
 	// Boutons
 	setKey(app.kEnter, getBool(app, app.aAction, -1), RETROK_RETURN);
@@ -912,6 +1321,21 @@ void uploadFrame(App &app) {
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, app.srcTexW, app.srcTexH, GL_RGBA, GL_UNSIGNED_BYTE, app.frame.rgba.data());
 	}
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Couleur moyenne de l'image : l'écran éclaire doucement les gants et la pièce.
+	const uint8_t *px = app.frame.rgba.data();
+	const size_t count = (size_t)app.frame.width * (size_t)app.frame.height;
+	float sum[3] = {0, 0, 0};
+	size_t n = 0;
+	for (size_t i = 0; i < count; i += 53, n++)
+		for (int k = 0; k < 3; k++) {
+			float c = (float)px[i * 4 + k] * (1.0f / 255.0f);
+			sum[k] += c * c; // approximation de la conversion sRGB -> linéaire
+		}
+	if (n > 0) {
+		Vec3 avg{sum[0] / (float)n, sum[1] / (float)n, sum[2] / (float)n};
+		app.screenGlow = lolvr::lerp(app.screenGlow, avg, 0.25f);
+	}
 }
 
 bool acquireImage(Swapchain &sc, uint32_t &index) {
@@ -943,11 +1367,12 @@ bool renderQuad(App &app) {
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	if (app.srcTexW > 0) {
+		glViewport(kQuadMarginX, kQuadMarginY, kQuadImageW, kQuadImageH);
 		glUseProgram(app.blitProgram);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, app.srcTex);
 		glUniform2f(app.blitTexSize, (float)app.srcTexW, (float)app.srcTexH);
-		glUniform2f(app.blitOutSize, (float)app.quadSwapchain.width, (float)app.quadSwapchain.height);
+		glUniform2f(app.blitOutSize, (float)kQuadImageW, (float)kQuadImageH);
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
@@ -956,72 +1381,38 @@ bool renderQuad(App &app) {
 	return true;
 }
 
-void pushQuad(std::vector<float> &v, Vec3 a, Vec3 b, Vec3 c, Vec3 d) {
-	const Vec3 tri[6] = {a, b, c, a, c, d};
-	for (const Vec3 &p : tri) {
-		v.push_back(p.x);
-		v.push_back(p.y);
-		v.push_back(p.z);
+
+void fillSceneState(App &app, double now, bool focused) {
+	SceneState &s = app.ss;
+	s.environment = app.environment;
+	s.theme = app.shownTheme;
+	s.time = now - app.startTime;
+	s.screenPos = app.screenPos;
+	s.screenRot = screenRot(app);
+	s.screenWidth = screenWidth(app);
+	s.roomPos = app.roomPos;
+	s.roomYaw = app.screenYaw;
+	for (int h = 0; h < 2; h++) {
+		lolvr::HandState &hand = s.hands[h];
+		bool pointing = h == app.activeHand;
+		hand.visible = focused && app.aimValid[h];
+		hand.pos = toVec3(app.aimPose[h].position);
+		hand.rot = toQuat(app.aimPose[h].orientation);
+		// L'index qui vise ne se replie qu'un peu au clic, pour que le pointeur ne bouge pas.
+		hand.trigger = pointing ? app.triggerValue[h] * 0.3f : app.triggerValue[h];
+		hand.grip = app.squeezeValue[h];
+		hand.pointing = pointing;
 	}
+	s.hitValid = focused && app.hitValid;
+	s.hit = app.hitPoint;
+	s.clickPulse = app.clickPulse;
+	s.screenGlow = app.screenGlow;
+	s.gameTexture = app.srcTexW > 0 ? app.srcTex : 0;
+	s.gameWidth = app.srcTexW > 0 ? app.srcTexW : 320;
+	s.gameHeight = app.srcTexH > 0 ? app.srcTexH : 200;
 }
 
-// Couleur sRGB -> valeur à écrire selon le format de l'image.
-float channel(const App &app, float c) {
-	return app.srgb ? powf(c, 2.2f) : c;
-}
-
-void renderEye(App &app, int eye, const XrView &view, std::vector<float> &rayVerts, std::vector<float> &dotVerts) {
-	Swapchain &sc = app.eyeSwapchains[eye];
-	glBindFramebuffer(GL_FRAMEBUFFER, app.fbo);
-	glViewport(0, 0, sc.width, sc.height);
-	glClearColor(0, 0, 0, 0);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	Mat4 mvp = multiply(projectionFromFov(view.fov, 0.05f, 100.0f), viewFromPose(view.pose));
-	glUseProgram(app.colorProgram);
-	glUniformMatrix4fv(app.colorMvp, 1, GL_FALSE, mvp.m);
-	glBindVertexArray(app.lineVao);
-	glBindBuffer(GL_ARRAY_BUFFER, app.lineVbo);
-	if (!rayVerts.empty()) {
-		glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(rayVerts.size() * sizeof(float)), rayVerts.data(), GL_DYNAMIC_DRAW);
-		glUniform4f(app.colorColor, channel(app, 0.95f), channel(app, 0.75f), channel(app, 0.25f), 1.0f);
-		glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(rayVerts.size() / 3));
-	}
-	if (!dotVerts.empty()) {
-		glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(dotVerts.size() * sizeof(float)), dotVerts.data(), GL_DYNAMIC_DRAW);
-		glUniform4f(app.colorColor, 1.0f, 1.0f, 1.0f, 1.0f);
-		glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(dotVerts.size() / 3));
-	}
-	glBindVertexArray(0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void buildPointerGeometry(App &app, std::vector<float> &rayVerts, std::vector<float> &dotVerts) {
-	int hand = app.activeHand;
-	if (!app.aimValid[hand])
-		return;
-	Vec3 origin = toVec3(app.aimPose[hand].position);
-	Vec3 dir = rotate(app.aimPose[hand].orientation, {0, 0, -1});
-	Vec3 start = origin + dir * 0.05f;
-	Vec3 end = app.hitValid ? app.hitPoint : origin + dir * 1.5f;
-	Vec3 axis = normalize(end - start);
-	Vec3 side = normalize(cross(axis, {0, 1, 0}));
-	if (dot(side, side) < 0.5f)
-		side = {1, 0, 0};
-	Vec3 up = normalize(cross(side, axis));
-	const float w0 = 0.0025f, w1 = 0.0012f;
-	pushQuad(rayVerts, start - side * w0, start + side * w0, end + side * w1, end - side * w1);
-	pushQuad(rayVerts, start - up * w0, start + up * w0, end + up * w1, end - up * w1);
-
-	if (app.hitValid) {
-		Vec3 sx = rotate(app.screenPose.orientation, {1, 0, 0}) * 0.007f;
-		Vec3 sy = rotate(app.screenPose.orientation, {0, 1, 0}) * 0.007f;
-		Vec3 c = app.hitPoint;
-		pushQuad(dotVerts, c - sx - sy, c + sx - sy, c + sx + sy, c - sx + sy);
-	}
-}
-
-void renderFrame(App &app, float dt) {
+void renderFrame(App &app, float dt, int savedEnvironment) {
 	XrFrameWaitInfo waitInfo{XR_TYPE_FRAME_WAIT_INFO};
 	XrFrameState frameState{XR_TYPE_FRAME_STATE};
 	if (XR_FAILED(xrWaitFrame(app.session, &waitInfo, &frameState)))
@@ -1030,33 +1421,74 @@ void renderFrame(App &app, float dt) {
 	if (XR_FAILED(xrBeginFrame(app.session, &beginInfo)))
 		return;
 
+	XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
 	XrCompositionLayerQuad quadLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
 	XrCompositionLayerProjection projLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
 	XrCompositionLayerProjectionView projViews[2] = {{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}};
 	std::vector<const XrCompositionLayerBaseHeader *> layers;
 
 	if (frameState.shouldRender) {
-		if (app.sessionState == XR_SESSION_STATE_FOCUSED)
-			updateInput(app, frameState.predictedDisplayTime, dt);
-		else
+		const XrTime time = frameState.predictedDisplayTime;
+		const double now = nowSeconds();
+		const bool focused = app.sessionState == XR_SESSION_STATE_FOCUSED;
+		const bool visible = focused || app.sessionState == XR_SESSION_STATE_VISIBLE;
+
+		updateHead(app, time);
+		// Au premier affichage : on retrouve le décor choisi la dernière fois et on place l'écran.
+		if (!app.environmentRestored && app.headValid) {
+			app.environmentRestored = true;
+			setEnvironment(app, savedEnvironment, time);
+		}
+		if (app.headValid && !app.screenPlaced) {
+			updateFloor(app, time);
+			placeScreen(app, true);
+		}
+
+		if (focused) {
+			updateInput(app, time, dt, now);
+		} else {
 			CoreHost::get().setMouseButtons(false, false);
+			app.hitValid = false;
+		}
+		updateGameEvents(app, now);
+		app.clickPulse *= expf(-dt * 7.0f);
+		if (app.settingsDirty)
+			saveSettings(app);
 
 		uploadFrame(app);
+		fillSceneState(app, now, focused);
+		app.scene.prepare(app.ss);
 
-		if (app.screenPlaced && renderQuad(app)) {
+		// Son : l'auditeur est la tête du joueur ; le son du jeu vient de l'écran.
+		Ambience &ambience = Ambience::get();
+		if (app.headValid)
+			ambience.setListener(app.headPos, app.headRot);
+		ambience.setScreen(app.screenPos, screenRot(app), screenWidth(app));
+		ambience.setRoom(app.roomPos, app.screenYaw);
+		ambience.setMood(visible && app.environment == lolvr::kEnvLibrary && app.scene.ready(), app.shownTheme);
+
+		// Calques, du fond vers l'avant : vraie pièce (réalité mixte), image du jeu, décor.
+		if (app.passthroughActive) {
+			passthroughLayer.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+			passthroughLayer.space = XR_NULL_HANDLE;
+			passthroughLayer.layerHandle = app.passthroughLayer;
+			layers.push_back((const XrCompositionLayerBaseHeader *)&passthroughLayer);
+		}
+		if (app.screenPlaced && Scene::usesQuadLayer(app.environment) && renderQuad(app)) {
 			quadLayer.space = app.localSpace;
 			quadLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
 			quadLayer.subImage.swapchain = app.quadSwapchain.handle;
 			quadLayer.subImage.imageRect.offset = {0, 0};
 			quadLayer.subImage.imageRect.extent = {app.quadSwapchain.width, app.quadSwapchain.height};
-			quadLayer.pose = app.screenPose;
-			quadLayer.size = {app.screenWidth, app.screenWidth * 0.75f};
+			quadLayer.pose.orientation = toXr(screenRot(app));
+			quadLayer.pose.position = toXr(app.screenPos);
+			quadLayer.size = {screenWidth(app) * kQuadScale, screenWidth(app) * 0.75f * kQuadScale};
 			layers.push_back((const XrCompositionLayerBaseHeader *)&quadLayer);
 		}
 
 		XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
 		locateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-		locateInfo.displayTime = frameState.predictedDisplayTime;
+		locateInfo.displayTime = time;
 		locateInfo.space = app.localSpace;
 		XrViewState viewState{XR_TYPE_VIEW_STATE};
 		XrView views[2] = {{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
@@ -1064,29 +1496,34 @@ void renderFrame(App &app, float dt) {
 		bool viewsOk = XR_SUCCEEDED(xrLocateViews(app.session, &locateInfo, &viewState, 2, &viewCount, views)) && viewCount == 2 &&
 		               (viewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) &&
 		               (viewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT);
-		if (viewsOk) {
-			std::vector<float> rayVerts, dotVerts;
-			if (app.sessionState == XR_SESSION_STATE_FOCUSED)
-				buildPointerGeometry(app, rayVerts, dotVerts);
+		if (viewsOk && app.screenPlaced) {
 			bool ok = true;
 			for (int eye = 0; eye < 2 && ok; eye++) {
+				Swapchain &sc = app.eyeSwapchains[eye];
 				uint32_t index = 0;
-				if (!acquireImage(app.eyeSwapchains[eye], index)) {
+				if (!acquireImage(sc, index)) {
 					ok = false;
 					break;
 				}
-				glBindFramebuffer(GL_FRAMEBUFFER, app.fbo);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, app.eyeSwapchains[eye].images[index].image, 0);
-				renderEye(app, eye, views[eye], rayVerts, dotVerts);
-				releaseImage(app.eyeSwapchains[eye]);
+				bindEyeTarget(app, eye, sc.images[index].image);
+				glViewport(0, 0, sc.width, sc.height);
+				const XrFovf &fov = views[eye].fov;
+				Mat4 proj = lolvr::projectionFromTangents(tanf(fov.angleLeft), tanf(fov.angleRight), tanf(fov.angleDown), tanf(fov.angleUp), 0.05f, 60.0f);
+				Mat4 view = lolvr::viewFromPose(toVec3(views[eye].pose.position), toQuat(views[eye].pose.orientation));
+				app.scene.render(view, proj, app.ss);
+				const GLenum discard[] = {GL_DEPTH_ATTACHMENT};
+				glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, discard);
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				releaseImage(sc);
 				projViews[eye].pose = views[eye].pose;
 				projViews[eye].fov = views[eye].fov;
-				projViews[eye].subImage.swapchain = app.eyeSwapchains[eye].handle;
+				projViews[eye].subImage.swapchain = sc.handle;
 				projViews[eye].subImage.imageRect.offset = {0, 0};
-				projViews[eye].subImage.imageRect.extent = {app.eyeSwapchains[eye].width, app.eyeSwapchains[eye].height};
+				projViews[eye].subImage.imageRect.extent = {sc.width, sc.height};
 			}
 			if (ok) {
-				// Calque transparent posé par-dessus l'écran : seuls le rayon et le point sont visibles.
+				// Le décor est en alpha prémultiplié : là où il est transparent (l'ouverture du
+				// cadre, ou tout ce qui entoure l'écran en réalité mixte), on voit les calques du dessous.
 				projLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 				projLayer.space = app.localSpace;
 				projLayer.viewCount = 2;
@@ -1117,6 +1554,10 @@ void releaseAllKeys(App &app) {
 	CoreHost::get().setSpecialButtons(false, false);
 	app.triggerDown[0] = app.triggerDown[1] = false;
 	app.squeezeDown[0] = app.squeezeDown[1] = false;
+	app.triggerValue[0] = app.triggerValue[1] = 0.0f;
+	app.squeezeValue[0] = app.squeezeValue[1] = 0.0f;
+	app.zoomDown = false;
+	app.recenterDown = false;
 	CoreHost::get().setMouseButtons(false, false);
 }
 
@@ -1151,6 +1592,8 @@ void pollXrEvents(App &app) {
 			// Le jeu ne tourne que lorsque le casque est porté et l'application visible.
 			bool active = changed->state == XR_SESSION_STATE_VISIBLE || changed->state == XR_SESSION_STATE_FOCUSED;
 			CoreHost::get().setPaused(!active);
+			if (!active)
+				Ambience::get().setMood(false, app.shownTheme);
 			if (changed->state != XR_SESSION_STATE_FOCUSED)
 				releaseAllKeys(app);
 			break;
@@ -1191,12 +1634,16 @@ void android_main(android_app *androidApp) {
 	app.systemDir = internal + "/system";
 	app.saveDir = external + "/sauvegardes";
 	app.gameRoot = external + "/lol";
+	app.settingsPath = internal + "/reglages.txt";
 	makeDirs(app.systemDir);
 	makeDirs(app.saveDir);
 	makeDirs(app.gameRoot);
 	extractAssetDir(activity->assetManager, "scummvm/theme", app.systemDir + "/scummvm/theme");
 	extractAssetDir(activity->assetManager, "scummvm/extra", app.systemDir + "/scummvm/extra");
 	LOGI("dossier du jeu : %s", app.gameRoot.c_str());
+	int savedEnvironment = lolvr::kEnvLibrary;
+	loadSettings(app, savedEnvironment);
+	app.startTime = nowSeconds();
 
 	// Tant que la session VR n'est pas active, le jeu reste en pause.
 	CoreHost::get().setPaused(true);
@@ -1205,6 +1652,9 @@ void android_main(android_app *androidApp) {
 	if (!ready) {
 		LOGE("initialisation impossible : fermeture");
 		ANativeActivity_finish(activity);
+	} else {
+		// Le son démarre tout de suite : l'ambiance de la pièce accompagne même l'écran d'accueil.
+		app.audio = startAudio(app.audioRate);
 	}
 
 	double lastTime = nowSeconds();
@@ -1231,15 +1681,12 @@ void android_main(android_app *androidApp) {
 		float dt = (float)fmin(now - lastTime, 0.1);
 		lastTime = now;
 		if (app.sessionRunning)
-			renderFrame(app, dt);
+			renderFrame(app, dt, savedEnvironment);
 	}
 
 	// Fermeture : on arrête le son et le jeu, puis on quitte le processus pour repartir
 	// d'un état propre au prochain lancement.
-	if (app.audio) {
-		AAudioStream_requestStop(app.audio);
-		AAudioStream_close(app.audio);
-	}
+	stopAudio(app.audio);
 	CoreHost::get().stop();
 	if (app.session != XR_NULL_HANDLE)
 		xrDestroySession(app.session);

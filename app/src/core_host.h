@@ -25,6 +25,20 @@ struct Frame {
 	uint64_t serial = 0; // augmente à chaque nouvelle image
 };
 
+// État du jeu publié par notre correctif du moteur (patches/0002) : zone en cours et
+// derniers événements. Les compteurs « serial » augmentent à chaque nouvel événement.
+struct GameState {
+	int level = 0;            // 0 tant qu'aucune partie n'est en cours
+	char tileset[16] = {0};   // décor du niveau, par ex. « FOREST1 »
+	uint32_t sfxSerial = 0;   // effet sonore joué
+	int sfxVolume = 0;        // 0..255
+	char sfxName[16] = {0};   // fichier son, par ex. « DOORMTOP »
+	uint32_t hurtSerial = 0;  // un membre du groupe est blessé
+	int hurtDamage = 0;
+	uint32_t hitSerial = 0;   // le groupe blesse un monstre
+	int hitDamage = 0;
+};
+
 class CoreHost {
 public:
 	static CoreHost &get();
@@ -49,6 +63,9 @@ public:
 
 	// Met le jeu en pause (casque retiré, menu système…) : plus d'images ni de son.
 	void setPaused(bool paused);
+
+	// Copie l'état du jeu ; faux si le cœur ne tourne pas.
+	bool gameState(GameState &out) const;
 
 	// Lit jusqu'à `frames` trames stéréo 16 bits ; complète par du silence.
 	void readAudio(int16_t *out, size_t frames);

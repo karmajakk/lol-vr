@@ -13,6 +13,25 @@
 #include "font8x16.h"
 #include "libretro.h"
 
+// État partagé exporté par le cœur (voir patches/0002 et engines/kyra/engine/lol.h).
+extern "C" {
+struct LolvrGameState {
+	int32_t version;
+	int32_t level;
+	char tileset[16];
+	uint32_t sfxSerial;
+	int32_t sfxTrack;
+	int32_t sfxVolume;
+	uint32_t hurtSerial;
+	int32_t hurtDamage;
+	uint32_t hitSerial;
+	int32_t hitDamage;
+	char sfxName[16];
+	int32_t reserved[4];
+};
+const LolvrGameState *retro_lolvr_state(void);
+}
+
 namespace lolvr {
 
 namespace {
@@ -452,6 +471,28 @@ void CoreHost::readAudio(int16_t *out, size_t frames) {
 	}
 	if (n < frames)
 		memset(out + n * 2, 0, (frames - n) * 2 * sizeof(int16_t));
+}
+
+bool CoreHost::gameState(GameState &out) const {
+	if (!g.running || g.finished)
+		return false;
+	const LolvrGameState *s = retro_lolvr_state();
+	if (!s || s->version != 1)
+		return false;
+	// Lecture sans verrou depuis un autre fil : les compteurs sont lus en premier, si bien
+	// qu'un événement en cours d'écriture sera simplement vu à l'image suivante.
+	out.sfxSerial = s->sfxSerial;
+	out.hurtSerial = s->hurtSerial;
+	out.hitSerial = s->hitSerial;
+	out.level = s->level;
+	out.sfxVolume = s->sfxVolume;
+	out.hurtDamage = s->hurtDamage;
+	out.hitDamage = s->hitDamage;
+	memcpy(out.tileset, s->tileset, sizeof(out.tileset));
+	memcpy(out.sfxName, s->sfxName, sizeof(out.sfxName));
+	out.tileset[sizeof(out.tileset) - 1] = 0;
+	out.sfxName[sizeof(out.sfxName) - 1] = 0;
+	return true;
 }
 
 int CoreHost::sampleRate() const {
