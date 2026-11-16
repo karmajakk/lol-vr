@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <atomic>
 #include <string>
 #include <thread>
@@ -287,10 +288,24 @@ uniform vec2 uGameSize;
 uniform vec4 uRect;
 uniform vec2 uBorder;
 uniform float uAlpha;
+uniform vec4 uHot;
+uniform float uMode;
+uniform float uGlow;
 in vec2 vUv;
 out vec4 oColor;
 void main() {
 	vec3 c;
+	if (uMode > 0.5) {
+		// Poignée : barrette de laiton striée, plus claire quand on la vise.
+		vec3 brass = mix(vec3(0.30, 0.17, 0.04), vec3(0.90, 0.62, 0.20), smoothstep(0.0, 1.0, vUv.y));
+		float groove = smoothstep(0.30, 0.40, abs(fract(vUv.x * 7.0) - 0.5));
+		brass *= 0.70 + 0.30 * groove;
+		vec2 e = min(vUv, 1.0 - vUv);
+		brass *= 0.55 + 0.45 * smoothstep(0.0, 0.12, min(e.x * 4.0, e.y));
+		brass = brass * (1.0 + 1.6 * uGlow) + vec3(0.25, 0.18, 0.06) * uGlow;
+		oColor = vec4(brass * uAlpha, uAlpha);
+		return;
+	}
 	vec2 outside = max(uRect.xy - vUv, vUv - uRect.zw);
 	if (outside.x > 0.0 || outside.y > 0.0) {
 		float e = clamp(max(outside.x / uBorder.x, outside.y / uBorder.y), 0.0, 1.0);
@@ -304,6 +319,8 @@ void main() {
 		vec2 fpp = (tc - clamp(tc, -region, region)) * 4.0 + 0.5;
 		vec2 p = (ti + fpp) / uGameSize;
 		c = texture(uGame, clamp(p, uRect.xy, uRect.zw)).rgb;
+		if (vUv.x > uHot.x && vUv.x < uHot.z && vUv.y > uHot.y && vUv.y < uHot.w)
+			c = mix(c, vec3(1.0, 0.80, 0.40), 0.30) + vec3(0.06, 0.04, 0.0);
 	}
 	oColor = vec4(c * uAlpha, uAlpha);
 }
@@ -436,12 +453,22 @@ struct Scene::Impl {
 	bool srgb = true;
 	GLuint litProgram = 0, fxProgram = 0, crtProgram = 0, flatProgram = 0, panelProgram = 0;
 	struct {
-		GLint viewProj, game, gameSize, rect, border, alpha;
+		GLint viewProj, game, gameSize, rect, border, alpha, hot, mode, glow;
 	} panel;
+	// Panneaux et poignées à dessiner pour l'image courante (triés du plus loin au plus près).
 	struct PanelDraw {
 		int first = 0, count = 0;
-		float rect[4] = {0, 0, 1, 1}, border[2] = {0.01f, 0.01f}, alpha = 1.0f;
-	} panelDraw[SceneState::kMaxPanels];
+		float rect[4] = {0, 0, 1, 1}, border[2] = {0.01f, 0.01f}, alpha = 1.0f, hot[4] = {0, 0, 0, 0};
+		float mode = 0.0f, glow = 0.0f;
+		GLuint texture = 0;
+		float texSize[2] = {320, 200};
+		Vec3 center = {0, 0, 0};
+	};
+	std::vector<PanelDraw> panelDraws;
+	float frameAspect = 0.75f;
+	Mat4 holeMat;
+	RoomOptions roomOptions;
+	bool roomDirty = false;
 	struct {
 		GLint viewProj, model, lightPos, lightCol, ambSky, ambGround, camPos, tex, exposure, fade, alphaMode;
 	} lit;
@@ -475,13 +502,14 @@ struct Scene::Impl {
 
 	void startJob(int theme, bool all);
 	void finishJob();
+	void rebuildRoom();
 	void buildFx(const SceneState &s);
 };
 
 void Scene::Impl::startJob(int theme, bool all) {
 	job = new TexJob();
 	job->theme = theme;
-	for (int l = 0; l < kTexCount; l++)
+	for (int l = 0; l < kTexProcCount; l++)
 		if (all || layerDependsOnTheme(l))
 			job->layers.push_back(l);
 	job->pixels.resize(job->layers.size());
@@ -507,11 +535,64 @@ void Scene::Impl::finishJob() {
 	delete job;
 	job = nullptr;
 
+	rebuildRoom();
+}
+
+void Scene::Impl::rebuildRoom() {
 	MeshBuilder solid, alpha;
-	buildRoom(solid, alpha, roomInfo, loadedTheme);
+	buildRoom(solid, alpha, roomInfo, loadedTheme, roomOptions);
 	uploadLitMesh(roomSolid, solid.verts, GL_STATIC_DRAW);
 	uploadLitMesh(roomAlpha, alpha.verts, GL_STATIC_DRAW);
+	roomDirty = false;
 	SCENE_LOG("décor prêt (thème %s, %d sommets)", themeInfo(loadedTheme).name, (int)solid.verts.size());
+}
+
+// Copie une image du joueur dans deux couches du tableau de textures (moitié gauche, moitié droite).
+void Scene::setImage(int slot, const unsigned char *rgba, int w, int h) {
+	if (slot < 0 || slot > 1 || !rgba || w < 2 || h < 2 || !d->texArray)
+		return;
+	const int base = slot == 0 ? kTexImgWindowA : kTexImgPortraitA;
+	const int N = kTexSize;
+	const float m = kImgMargin;
+	std::vector<uint8_t> px((size_t)N * N * 4);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, d->texArray);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	for (int half = 0; half < 2; half++) {
+		for (int y = 0; y < N; y++) {
+			float sv = (((float)y + 0.5f) / (float)N - m) / (1.0f - 2.0f * m);
+			float fy = clampf((1.0f - sv) * (float)h - 0.5f, 0.0f, (float)(h - 1));
+			int y0 = (int)fy, y1 = y0 + 1 < h ? y0 + 1 : y0;
+			float ty = fy - (float)y0;
+			for (int x = 0; x < N; x++) {
+				float su = (((float)x + 0.5f) / (float)N - m) / (1.0f - 2.0f * m);
+				float fx = clampf(((float)half + su) * 0.5f * (float)w - 0.5f, 0.0f, (float)(w - 1));
+				int x0 = (int)fx, x1 = x0 + 1 < w ? x0 + 1 : x0;
+				float tx = fx - (float)x0;
+				const unsigned char *p00 = rgba + ((size_t)y0 * w + x0) * 4, *p10 = rgba + ((size_t)y0 * w + x1) * 4;
+				const unsigned char *p01 = rgba + ((size_t)y1 * w + x0) * 4, *p11 = rgba + ((size_t)y1 * w + x1) * 4;
+				uint8_t *o = &px[((size_t)y * N + x) * 4];
+				for (int k = 0; k < 3; k++) {
+					float top = (float)p00[k] + ((float)p10[k] - (float)p00[k]) * tx;
+					float bot = (float)p01[k] + ((float)p11[k] - (float)p01[k]) * tx;
+					o[k] = (uint8_t)(top + (bot - top) * ty + 0.5f);
+				}
+				o[3] = 0; // couleur propre : jamais teintée par le sommet
+			}
+		}
+		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, base + half, N, N, 1, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+	}
+	glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+	float aspect = (float)w / (float)h;
+	if (slot == 0) {
+		d->roomOptions.windowImage = true;
+		d->roomOptions.windowAspect = aspect;
+	} else {
+		d->roomOptions.portraitImage = true;
+		d->roomOptions.portraitAspect = aspect;
+	}
+	d->roomDirty = true;
+	SCENE_LOG("image du joueur %d : %d x %d", slot, w, h);
 }
 
 Scene::Scene() : d(new Impl()) {}
@@ -543,6 +624,9 @@ bool Scene::init(bool srgbTarget) {
 	d->panel.rect = glGetUniformLocation(d->panelProgram, "uRect");
 	d->panel.border = glGetUniformLocation(d->panelProgram, "uBorder");
 	d->panel.alpha = glGetUniformLocation(d->panelProgram, "uAlpha");
+	d->panel.hot = glGetUniformLocation(d->panelProgram, "uHot");
+	d->panel.mode = glGetUniformLocation(d->panelProgram, "uMode");
+	d->panel.glow = glGetUniformLocation(d->panelProgram, "uGlow");
 	d->lit.viewProj = glGetUniformLocation(d->litProgram, "uViewProj");
 	d->lit.model = glGetUniformLocation(d->litProgram, "uModel");
 	d->lit.lightPos = glGetUniformLocation(d->litProgram, "uLightPos");
@@ -596,7 +680,7 @@ bool Scene::init(bool srgbTarget) {
 	setupFxMesh(d->fxMesh);
 
 	MeshBuilder frame, body, glass;
-	buildScreenFrame(frame);
+	buildScreenFrame(frame, d->frameAspect);
 	uploadLitMesh(d->frameMesh, frame.verts, GL_STATIC_DRAW);
 	buildCrt(body, glass);
 	uploadLitMesh(d->crtBody, body.verts, GL_STATIC_DRAW);
@@ -705,7 +789,7 @@ void Scene::Impl::buildFx(const SceneState &s) {
 		}
 		// Aura de l'écran magique
 		{
-			const float col[4] = {s.screenGlow.x + 0.02f, s.screenGlow.y + 0.02f, s.screenGlow.z + 0.03f, 0.28f};
+			const float col[4] = {s.screenGlow.x + 0.02f, s.screenGlow.y + 0.02f, s.screenGlow.z + 0.03f, 0.10f};
 			fx.sprite(s.screenPos - screenN * 0.04f, s.screenWidth * 2.1f, s.screenWidth * 1.75f, col, kFxGlow, 1);
 		}
 	}
@@ -766,10 +850,26 @@ void Scene::prepare(const SceneState &s) {
 	}
 	if (!d->job && d->texturesReady && s.theme != d->loadedTheme && s.theme >= 0 && s.theme < kThemeCount)
 		d->startJob(s.theme, false);
+	if (!d->job && d->texturesReady && d->roomDirty)
+		d->rebuildRoom();
+
+	// Le cadre suit le format de l'image affichée (image entière ou vue du donjon seule).
+	float aspect = s.environment == kEnvPassthroughCrt ? 0.75f : clampf(s.screenAspect, 0.3f, 1.5f);
+	if (fabsf(aspect - d->frameAspect) > 1e-4f) {
+		d->frameAspect = aspect;
+		MeshBuilder frame;
+		buildScreenFrame(frame, aspect);
+		uploadLitMesh(d->frameMesh, frame.verts, GL_DYNAMIC_DRAW);
+	}
 
 	d->fade = d->texturesReady ? clampf((float)(s.time - d->readyTime) / 1.6f, 0.0f, 1.0f) : 0.0f;
 	d->roomMat = poseMatrix(s.roomPos, quatYaw(s.roomYaw));
 	d->screenMat = poseMatrix(s.screenPos, s.screenRot, s.screenWidth);
+	{
+		Mat4 stretch = identity();
+		stretch.m[5] = d->frameAspect / 0.75f;
+		d->holeMat = multiply(d->screenMat, stretch);
+	}
 
 	// Lumières
 	memset(d->lightPos, 0, sizeof(d->lightPos));
@@ -821,19 +921,18 @@ void Scene::prepare(const SceneState &s) {
 			buildGlove(d->dynBuilder, h == 0, hand.trigger, hand.grip);
 		}
 	}
-	// Panneaux d'interface (mode fenêtre)
+	// Panneaux flottants et poignées
 	MeshBuilder panel;
-	for (int i = 0; i < SceneState::kMaxPanels; i++) {
+	d->panelDraws.clear();
+	for (int i = 0; i < SceneState::kMaxPanels && d->texturesReady; i++) {
 		const SceneState::Panel &pn = s.panels[i];
-		Impl::PanelDraw &pd = d->panelDraw[i];
-		pd.count = 0;
-		if (!d->texturesReady || !pn.visible || pn.alpha <= 0.01f || !s.gameTexture)
+		GLuint tex = pn.texture ? pn.texture : s.gameTexture;
+		if (!pn.visible || pn.alpha <= 0.01f || !tex)
 			continue;
-		const float b = 0.009f;
-		Vec3 n = cross(pn.right, pn.up);
+		Impl::PanelDraw pd;
+		const float b = pn.border;
 		float du = (pn.u1 - pn.u0) * b / (2.0f * pn.halfW), dv = (pn.v1 - pn.v0) * b / (2.0f * pn.halfH);
 		Vec3 r = pn.right * (pn.halfW + b), u = pn.up * (pn.halfH + b);
-		(void)n;
 		pd.first = (int)panel.verts.size();
 		panel.quad(pn.center - r - u, pn.center + r - u, pn.center + r + u, pn.center - r + u, mat(kTexWhite),
 		           pn.u0 - du, pn.v1 + dv, pn.u1 + du, pn.v0 - dv);
@@ -841,6 +940,28 @@ void Scene::prepare(const SceneState &s) {
 		pd.rect[0] = pn.u0; pd.rect[1] = pn.v0; pd.rect[2] = pn.u1; pd.rect[3] = pn.v1;
 		pd.border[0] = du; pd.border[1] = dv;
 		pd.alpha = pn.alpha;
+		for (int k = 0; k < 4; k++)
+			pd.hot[k] = pn.hot[k];
+		pd.texture = tex;
+		pd.texSize[0] = (float)(pn.texture ? pn.texW : s.gameWidth);
+		pd.texSize[1] = (float)(pn.texture ? pn.texH : s.gameHeight);
+		pd.center = pn.center;
+		d->panelDraws.push_back(pd);
+	}
+	for (int i = 0; i < SceneState::kMaxHandles && d->texturesReady; i++) {
+		const SceneState::Handle &hn = s.handles[i];
+		if (!hn.visible || hn.alpha <= 0.01f)
+			continue;
+		Impl::PanelDraw pd;
+		Vec3 r = hn.right * hn.halfW, u = hn.up * hn.halfH;
+		pd.first = (int)panel.verts.size();
+		panel.quad(hn.center - r - u, hn.center + r - u, hn.center + r + u, hn.center - r + u, mat(kTexWhite), 0, 0, 1, 1);
+		pd.count = (int)panel.verts.size() - pd.first;
+		pd.alpha = hn.alpha;
+		pd.mode = 1.0f;
+		pd.glow = hn.glow;
+		pd.center = hn.center;
+		d->panelDraws.push_back(pd);
 	}
 	uploadLitMesh(d->panelMesh, panel.verts, GL_DYNAMIC_DRAW);
 	uploadLitMesh(d->dynMesh, d->dynBuilder.verts, GL_DYNAMIC_DRAW);
@@ -892,7 +1013,7 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 			glDrawArrays(GL_TRIANGLES, 0, d->roomSolid.count);
 		}
 		glUniformMatrix4fv(d->lit.model, 1, GL_FALSE, d->screenMat.m);
-		if (crt || s.frameVisible) {
+		{
 			GlMesh &around = crt ? d->crtBody : d->frameMesh;
 			glBindVertexArray(around.vao);
 			glDrawArrays(GL_TRIANGLES, 0, around.count);
@@ -920,10 +1041,10 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glBindVertexArray(d->crtGlass.vao);
 		glDrawArrays(GL_TRIANGLES, 0, d->crtGlass.count);
 		glBindTexture(GL_TEXTURE_2D, 0);
-	} else if (s.frameVisible) {
+	} else {
 		// « Trou » transparent : l'image nette du jeu (calque quad) apparaît à travers.
 		glUseProgram(d->flatProgram);
-		Mat4 mvp = multiply(viewProj, d->screenMat);
+		Mat4 mvp = multiply(viewProj, d->holeMat);
 		glUniformMatrix4fv(d->flat.mvp, 1, GL_FALSE, mvp.m);
 		glUniform4f(d->flat.color, 0, 0, 0, 0);
 		glBindVertexArray(d->holeMesh.vao);
@@ -933,26 +1054,6 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 	// --- Transparences ---
 	glEnable(GL_BLEND);
 	glDepthMask(GL_FALSE);
-	if (d->panelMesh.count > 0 && s.gameTexture) {
-		glUseProgram(d->panelProgram);
-		glUniformMatrix4fv(d->panel.viewProj, 1, GL_FALSE, viewProj.m);
-		glUniform2f(d->panel.gameSize, (float)s.gameWidth, (float)s.gameHeight);
-		glUniform1i(d->panel.game, 0);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, s.gameTexture);
-		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-		glBindVertexArray(d->panelMesh.vao);
-		for (int i = 0; i < SceneState::kMaxPanels; i++) {
-			const Impl::PanelDraw &pd = d->panelDraw[i];
-			if (pd.count <= 0)
-				continue;
-			glUniform4f(d->panel.rect, pd.rect[0], pd.rect[1], pd.rect[2], pd.rect[3]);
-			glUniform2f(d->panel.border, pd.border[0], pd.border[1]);
-			glUniform1f(d->panel.alpha, pd.alpha);
-			glDrawArrays(GL_TRIANGLES, pd.first, pd.count);
-		}
-		glBindTexture(GL_TEXTURE_2D, 0);
-	}
 	if (library && d->texturesReady && d->roomAlpha.count > 0) {
 		glUseProgram(d->litProgram);
 		glUniform1f(d->lit.alphaMode, 1.0f);
@@ -962,6 +1063,37 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 		glBindVertexArray(d->roomAlpha.vao);
 		glDrawArrays(GL_TRIANGLES, 0, d->roomAlpha.count);
+	}
+	if (d->panelMesh.count > 0 && !d->panelDraws.empty()) {
+		// Du plus loin au plus près de l'œil, pour que les panneaux se recouvrent correctement.
+		std::vector<int> order(d->panelDraws.size());
+		for (size_t i = 0; i < order.size(); i++)
+			order[i] = (int)i;
+		std::sort(order.begin(), order.end(), [&](int a, int b) {
+			Vec3 da = d->panelDraws[a].center - camPos, db = d->panelDraws[b].center - camPos;
+			return dot(da, da) > dot(db, db);
+		});
+		glUseProgram(d->panelProgram);
+		glUniformMatrix4fv(d->panel.viewProj, 1, GL_FALSE, viewProj.m);
+		glUniform1i(d->panel.game, 0);
+		glActiveTexture(GL_TEXTURE0);
+		glDisable(GL_CULL_FACE);
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glBindVertexArray(d->panelMesh.vao);
+		for (int idx : order) {
+			const Impl::PanelDraw &pd = d->panelDraws[idx];
+			glBindTexture(GL_TEXTURE_2D, pd.texture);
+			glUniform2f(d->panel.gameSize, pd.texSize[0], pd.texSize[1]);
+			glUniform4f(d->panel.rect, pd.rect[0], pd.rect[1], pd.rect[2], pd.rect[3]);
+			glUniform2f(d->panel.border, pd.border[0], pd.border[1]);
+			glUniform1f(d->panel.alpha, pd.alpha);
+			glUniform4f(d->panel.hot, pd.hot[0], pd.hot[1], pd.hot[2], pd.hot[3]);
+			glUniform1f(d->panel.mode, pd.mode);
+			glUniform1f(d->panel.glow, pd.glow);
+			glDrawArrays(GL_TRIANGLES, pd.first, pd.count);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glEnable(GL_CULL_FACE);
 	}
 	if (d->fxMesh.count > 0) {
 		glUseProgram(d->fxProgram);

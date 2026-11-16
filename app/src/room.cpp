@@ -163,6 +163,183 @@ void painting(MeshBuilder &mb, float w, float h, int layer) {
 	mb.frame(w, h, prof, 6, mat(kTexGold, {1, 1, 1}), 3.5f);
 }
 
+// Image du joueur sur deux couches (moitié gauche, moitié droite), dans le rectangle a-b-c-d
+// (bas gauche, bas droite, haut droite, haut gauche).
+void imageQuad(MeshBuilder &mb, Vec3 a, Vec3 b, Vec3 c, Vec3 d, int layerA, float emissive) {
+	const float m = kImgMargin;
+	Vec3 mb0 = lerp(a, b, 0.5f), mt0 = lerp(d, c, 0.5f);
+	mb.quad(a, mb0, mt0, d, mat(layerA, {1, 1, 1}, 1.0f, emissive), m, m, 1.0f - m, 1.0f - m);
+	mb.quad(mb0, b, c, mt0, mat(layerA + 1, {1, 1, 1}, 1.0f, emissive), m, m, 1.0f - m, 1.0f - m);
+}
+
+// Tableau encadré dont la toile est une image du joueur.
+void paintingImage(MeshBuilder &mb, float w, float h, int layerA) {
+	const ProfilePoint prof[] = {{-0.012f, 0.006f}, {0.0f, 0.026f}, {0.022f, 0.040f}, {0.050f, 0.028f}, {0.072f, 0.040f}, {0.088f, 0.0f}};
+	imageQuad(mb, {-w * 0.5f, -h * 0.5f, 0.008f}, {w * 0.5f, -h * 0.5f, 0.008f}, {w * 0.5f, h * 0.5f, 0.008f}, {-w * 0.5f, h * 0.5f, 0.008f}, layerA, 0.16f);
+	mb.frame(w, h, prof, 6, mat(kTexGold, {1, 1, 1}), 3.5f);
+	// Petite plaque en laiton sous le cadre
+	mb.box({0, -h * 0.5f - 0.115f, 0.012f}, {0.13f, 0.022f, 0.006f}, mat(kTexMetal, kBrass, 6.0f, 0.05f));
+}
+
+// --- Objets inspirés de l'univers du jeu (dessinés ici, sans rien reprendre des images du jeu) ---
+
+// Gros rubis taillé sur un support à griffes.
+void rubyOnStand(MeshBuilder &mb, RoomInfo &info, Vec3 p) {
+	const ProfilePoint stand[] = {{0.060f, 0.0f}, {0.062f, 0.010f}, {0.030f, 0.022f}, {0.014f, 0.050f}, {0.026f, 0.075f}, {0.0f, 0.075f}};
+	mb.lathe(p, stand, 6, 10, mat(kTexMetal, kBrass, 6.0f, 0.04f));
+	const ProfilePoint gem[] = {{0.0f, 0.0f}, {0.050f, 0.050f}, {0.058f, 0.062f}, {0.036f, 0.092f}, {0.0f, 0.096f}};
+	Vec3 g = p + Vec3{0, 0.070f, 0};
+	mb.lathe(g, gem, 5, 8, mat(kTexWhite, {0.92f, 0.06f, 0.10f}, 1.0f, 0.55f));
+	for (int i = 0; i < 4; i++) {
+		float a = (float)i / 4.0f * 2.0f * kPi + 0.4f;
+		mb.rod(p + Vec3{cosf(a) * 0.020f, 0.066f, sinf(a) * 0.020f}, g + Vec3{cosf(a) * 0.056f, 0.060f, sinf(a) * 0.056f}, 0.004f, 0.003f, 4, mat(kTexMetal, kBrass, 6.0f));
+	}
+	info.glows.push_back({transformPoint(mb.xf, g + Vec3{0, 0.05f, 0}), Vec3{0.9f, 0.05f, 0.08f} * 0.55f, 0.34f});
+}
+
+// Lanterne à huile en laiton.
+void lantern(MeshBuilder &mb, RoomInfo &info, Vec3 p) {
+	Material brass = mat(kTexMetal, kBrass, 6.0f, 0.04f);
+	const ProfilePoint base[] = {{0.058f, 0.0f}, {0.060f, 0.012f}, {0.050f, 0.030f}, {0.040f, 0.046f}, {0.0f, 0.046f}};
+	mb.lathe(p, base, 5, 12, brass);
+	mb.cylinder(p + Vec3{0, 0.046f, 0}, 0.036f, 0.040f, 0.105f, 10, mat(kTexWhite, {1.0f, 0.78f, 0.42f}, 1.0f, 0.60f), false, false);
+	for (int i = 0; i < 4; i++) {
+		float a = (float)i / 4.0f * 2.0f * kPi + 0.78f;
+		mb.rod(p + Vec3{cosf(a) * 0.042f, 0.046f, sinf(a) * 0.042f}, p + Vec3{cosf(a) * 0.042f, 0.152f, sinf(a) * 0.042f}, 0.004f, 0.004f, 4, brass, false);
+	}
+	const ProfilePoint cap[] = {{0.050f, 0.0f}, {0.046f, 0.012f}, {0.020f, 0.036f}, {0.012f, 0.052f}, {0.0f, 0.052f}};
+	mb.lathe(p + Vec3{0, 0.150f, 0}, cap, 5, 12, brass);
+	const int n = 8;
+	for (int i = 0; i < n; i++) {
+		float a0 = kPi * (float)i / n, a1 = kPi * (float)(i + 1) / n;
+		mb.rod(p + Vec3{cosf(a0) * 0.045f, 0.19f + sinf(a0) * 0.050f, 0}, p + Vec3{cosf(a1) * 0.045f, 0.19f + sinf(a1) * 0.050f, 0}, 0.003f, 0.003f, 4, brass, false);
+	}
+	info.candleFlames.push_back(transformPoint(mb.xf, p + Vec3{0, 0.085f, 0}));
+}
+
+// Petit crâne verdâtre (les clés-crânes des donjons).
+void greenSkull(MeshBuilder &mb, RoomInfo &info, Vec3 p, float yawDeg) {
+	Mat4 saved = mb.xf;
+	mb.setTransform(multiply(saved, place(p, yawDeg)));
+	Material bone = mat(kTexWhite, {0.62f, 0.74f, 0.50f}, 1.0f, 0.08f);
+	ProfilePoint sph[8];
+	for (int i = 0; i < 8; i++) {
+		float a = -kPi * 0.35f + kPi * 0.85f * (float)i / 7.0f;
+		sph[i] = {cosf(a) * 0.050f, 0.060f + sinf(a) * 0.052f};
+	}
+	sph[7].r = 0.0f;
+	mb.lathe({0, 0, 0}, sph, 8, 10, bone);
+	mb.box({0, 0.016f, 0.020f}, {0.030f, 0.016f, 0.026f}, bone);
+	Material hole = mat(kTexWhite, {0.02f, 0.05f, 0.02f});
+	for (float sx : {-1.0f, 1.0f})
+		mb.box({sx * 0.019f, 0.060f, 0.045f}, {0.011f, 0.012f, 0.004f}, hole);
+	mb.box({0, 0.036f, 0.047f}, {0.005f, 0.008f, 0.003f}, hole);
+	mb.setTransform(saved);
+	info.glows.push_back({transformPoint(mb.xf, p + Vec3{0, 0.06f, 0}), Vec3{0.15f, 0.6f, 0.15f} * 0.35f, 0.18f});
+}
+
+// Épée à lame d'émeraude sur un présentoir en bois (repère : lame le long de x).
+void emeraldBlade(MeshBuilder &mb, RoomInfo &info, Vec3 p) {
+	Material wood = mat(kTexWood, {0.9f, 0.85f, 0.8f}, 2.0f);
+	mb.box(p + Vec3{0, 0.012f, 0}, {0.36f, 0.012f, 0.07f}, wood);
+	for (float sx : {-0.24f, 0.20f}) {
+		mb.box(p + Vec3{sx, 0.085f, 0}, {0.012f, 0.062f, 0.045f}, wood);
+		mb.box(p + Vec3{sx, 0.150f, -0.030f}, {0.012f, 0.012f, 0.010f}, wood);
+		mb.box(p + Vec3{sx, 0.150f, 0.030f}, {0.012f, 0.012f, 0.010f}, wood);
+	}
+	Vec3 c = p + Vec3{0, 0.155f, 0};
+	Material blade = mat(kTexWhite, {0.10f, 0.85f, 0.38f}, 1.0f, 0.45f);
+	// Lame en losange, pointe vers +x
+	Vec3 b0 = c + Vec3{-0.26f, 0, 0}, b1 = c + Vec3{0.34f, 0, 0}, tip = c + Vec3{0.44f, 0, 0};
+	const float hw = 0.022f, ht = 0.006f;
+	for (int side = 0; side < 4; side++) {
+		float sy = (side & 1) ? 1.0f : -1.0f, sz = (side & 2) ? 1.0f : -1.0f;
+		Vec3 e0 = b0 + Vec3{0, 0, sz * hw}, e1 = b1 + Vec3{0, 0, sz * hw * 0.8f};
+		Vec3 r0 = b0 + Vec3{0, sy * ht, 0}, r1 = b1 + Vec3{0, sy * ht, 0};
+		Vec3 n = normalize(Vec3{0, sy * hw, sz * ht});
+		const float uv[6] = {0, 0, 1, 0, 1, 1};
+		if (sy * sz > 0) {
+			mb.tri(e0, e1, r1, n, uv, blade); mb.tri(e0, r1, r0, n, uv, blade); mb.tri(e1, tip, r1, n, uv, blade);
+		} else {
+			mb.tri(e1, e0, r1, n, uv, blade); mb.tri(r1, e0, r0, n, uv, blade); mb.tri(tip, e1, r1, n, uv, blade);
+		}
+	}
+	Material gold = mat(kTexMetal, kBrass, 6.0f, 0.05f);
+	mb.box(c + Vec3{-0.27f, 0, 0}, {0.012f, 0.012f, 0.075f}, gold);
+	mb.rod(c + Vec3{-0.40f, 0, 0}, c + Vec3{-0.28f, 0, 0}, 0.013f, 0.013f, 6, mat(kTexLeather, {0.20f, 0.10f, 0.07f}, 4.0f));
+	mb.box(c + Vec3{-0.415f, 0, 0}, {0.018f, 0.018f, 0.018f}, gold);
+	info.glows.push_back({transformPoint(mb.xf, c + Vec3{0.10f, 0.02f, 0}), Vec3{0.08f, 0.7f, 0.3f} * 0.35f, 0.5f});
+}
+
+// Socle en pierre (colonne tronquée).
+void pedestal(MeshBuilder &mb, RoomInfo &info, float height) {
+	const ProfilePoint prof[] = {{0.20f, 0.0f}, {0.20f, 0.06f}, {0.15f, 0.10f}, {0.13f, height - 0.12f}, {0.17f, height - 0.07f}, {0.19f, height - 0.05f}, {0.19f, height}, {0.0f, height}};
+	mb.lathe({0, 0, 0}, prof, 8, 8, mat(kTexStone, {0.95f, 0.92f, 0.9f}, 1.2f));
+	info.shadows.push_back({transformPoint(mb.xf, {0, 0.012f, 0}), 0.30f, 0.30f, 0.5f});
+}
+
+// Masque sombre aux yeux luisants, sur une tige.
+void darkMask(MeshBuilder &mb, RoomInfo &info, Vec3 p) {
+	mb.rod(p, p + Vec3{0, 0.16f, 0}, 0.010f, 0.008f, 6, mat(kTexMetal, kIron, 4.0f));
+	mb.cylinder(p, 0.06f, 0.05f, 0.012f, 10, mat(kTexMetal, kIron, 4.0f), true, false);
+	Mat4 saved = mb.xf;
+	// Coque bombée : demi-ellipsoïde tourné vers +z
+	mb.setTransform(multiply(saved, multiply(poseMatrix(p + Vec3{0, 0.30f, 0}, quatAxisAngle({1, 0, 0}, rad(90.0f))),
+	                                         Mat4{{0.80f, 0, 0, 0, 0, 0.55f, 0, 0, 0, 0, 1.25f, 0, 0, 0, 0, 1}})));
+	ProfilePoint dome[7];
+	for (int i = 0; i < 7; i++) {
+		float a = kPi * 0.5f * (float)i / 6.0f;
+		dome[i] = {cosf(a) * 0.15f, sinf(a) * 0.15f};
+	}
+	mb.lathe({0, 0, 0}, dome, 7, 12, mat(kTexMetal, {0.20f, 0.12f, 0.26f}, 5.0f, 0.03f));
+	mb.setTransform(saved);
+	Vec3 c = p + Vec3{0, 0.30f, 0};
+	Material eye = mat(kTexWhite, {0.80f, 0.25f, 1.0f}, 1.0f, 1.0f);
+	for (float sx : {-1.0f, 1.0f}) {
+		const float uv[6] = {0, 0, 1, 0, 0.5f, 1};
+		Vec3 e = c + Vec3{sx * 0.050f, 0.030f, 0.082f};
+		Vec3 a = e + Vec3{-sx * 0.030f, -0.012f, 0.004f}, b = e + Vec3{sx * 0.030f, 0.016f, -0.010f}, d = e + Vec3{sx * 0.022f, -0.012f, -0.004f};
+		if (sx > 0)
+			mb.tri(a, d, b, {0, 0, 1}, uv, eye);
+		else
+			mb.tri(a, b, d, {0, 0, 1}, uv, eye);
+		// Cornes
+		mb.rod(c + Vec3{sx * 0.085f, 0.13f, 0.0f}, c + Vec3{sx * 0.150f, 0.30f, -0.02f}, 0.022f, 0.004f, 6, mat(kTexMetal, {0.16f, 0.10f, 0.20f}, 5.0f));
+	}
+	info.glows.push_back({transformPoint(mb.xf, c + Vec3{0, 0.03f, 0.08f}), Vec3{0.5f, 0.12f, 0.75f} * 0.28f, 0.22f});
+}
+
+// Cube gravé de runes qui flotte au-dessus de son socle.
+void runeCube(MeshBuilder &mb, RoomInfo &info, Vec3 p) {
+	Mat4 saved = mb.xf;
+	Quat q = multiply(quatYaw(rad(32.0f)), multiply(quatAxisAngle({1, 0, 0}, rad(35.3f)), quatAxisAngle({0, 0, 1}, rad(45.0f))));
+	mb.setTransform(multiply(saved, poseMatrix(p, q)));
+	const float h = 0.075f;
+	mb.box({0, 0, 0}, {h, h, h}, mat(kTexMetal, {0.30f, 0.62f, 0.78f}, 5.0f, 0.30f));
+	Material rune = mat(kTexWhite, {0.55f, 0.95f, 1.0f}, 1.0f, 1.0f);
+	const float e = h + 0.001f, r = h * 0.55f, t = 0.006f;
+	// Un motif en creux sur chaque face : carré ouvert + trait
+	for (int f = 0; f < 6; f++) {
+		Vec3 n{0, 0, 0}, u{0, 0, 0}, v{0, 0, 0};
+		int ax = f / 2;
+		float sgn = (f & 1) ? 1.0f : -1.0f;
+		(&n.x)[ax] = sgn;
+		(&u.x)[(ax + 1) % 3] = 1.0f;
+		(&v.x)[(ax + 2) % 3] = 1.0f;
+		Vec3 c = n * e;
+		auto bar = [&](Vec3 a, Vec3 hu, Vec3 hv) {
+			Vec3 he = hu + hv + Vec3{fabsf(n.x), fabsf(n.y), fabsf(n.z)} * 0.001f;
+			mb.box(c + a, {fabsf(he.x), fabsf(he.y), fabsf(he.z)}, rune);
+		};
+		bar(v * r, u * r, v * t);
+		bar(v * -r, u * r, v * t);
+		bar(u * -r, u * t, v * r);
+		bar(u * (r * 0.2f), u * t, v * (r * 0.55f));
+	}
+	mb.setTransform(saved);
+	info.glows.push_back({transformPoint(mb.xf, p), Vec3{0.2f, 0.7f, 0.9f} * 0.32f, 0.28f});
+}
+
 void banner(MeshBuilder &mb, float w, float len, Vec3 tint) {
 	// Tringle
 	mb.rod({-w * 0.5f - 0.06f, 0, 0.03f}, {w * 0.5f + 0.06f, 0, 0.03f}, 0.014f, 0.014f, 8, mat(kTexMetal, kBrass, 4.0f));
@@ -191,21 +368,26 @@ void sconce(MeshBuilder &mb, RoomInfo &info) {
 	candle(mb, info, {0, -0.055f, 0.13f}, 0.12f, 0.014f);
 }
 
+// Table de lecture placée devant le joueur, comme s'il y était assis. Le milieu du plateau
+// reste dégagé : rien ne dépasse dans le champ de l'écran.
+const float kTableHeight = 0.66f;
+
 void table(MeshBuilder &mb, RoomInfo &info, Rng &rng) {
+	(void)rng;
 	Material wood = mat(kTexWood, {1, 1, 1}, 1.2f);
-	const float w = 1.45f, d = 0.78f, h = 0.76f;
-	mb.box({0, h - 0.025f, 0}, {w * 0.5f, 0.025f, d * 0.5f}, wood);
-	mb.box({0, h - 0.10f, 0}, {w * 0.5f - 0.07f, 0.05f, d * 0.5f - 0.07f}, wood);
+	const float w = 1.60f, d = 0.56f, h = kTableHeight;
+	mb.box({0, h - 0.022f, 0}, {w * 0.5f, 0.022f, d * 0.5f}, wood);
+	mb.box({0, h - 0.085f, 0}, {w * 0.5f - 0.07f, 0.04f, d * 0.5f - 0.06f}, wood);
 	for (int i = 0; i < 4; i++) {
 		float sx = (i & 1) ? 1.0f : -1.0f, sz = (i & 2) ? 1.0f : -1.0f;
-		mb.box({sx * (w * 0.5f - 0.08f), (h - 0.05f) * 0.5f, sz * (d * 0.5f - 0.08f)}, {0.035f, (h - 0.05f) * 0.5f, 0.035f}, wood, 63, 0.55f);
+		mb.box({sx * (w * 0.5f - 0.07f), (h - 0.044f) * 0.5f, sz * (d * 0.5f - 0.07f)}, {0.032f, (h - 0.044f) * 0.5f, 0.032f}, wood, 63, 0.55f);
 	}
-	mb.box({0, 0.16f, 0}, {w * 0.5f - 0.08f, 0.02f, 0.03f}, wood);
-	info.shadows.push_back({transformPoint(mb.xf, {0, 0.012f, 0}), w * 0.62f, d * 0.75f, 0.55f});
+	mb.box({0, 0.14f, -d * 0.5f + 0.07f}, {w * 0.5f - 0.08f, 0.02f, 0.025f}, wood);
+	info.shadows.push_back({transformPoint(mb.xf, {0, 0.012f, 0}), w * 0.60f, d * 0.85f, 0.55f});
 
-	// Grimoire ouvert
+	// À gauche : grimoire ouvert, crâne, fioles
 	Mat4 saved = mb.xf;
-	mb.setTransform(multiply(saved, place({-0.12f, h, 0.10f}, 8.0f)));
+	mb.setTransform(multiply(saved, place({-0.52f, h, 0.02f}, 10.0f)));
 	mb.box({0, 0.008f, 0}, {0.205f, 0.008f, 0.14f}, mat(kTexLeather, {0.36f, 0.09f, 0.07f}, 3.0f));
 	Material page = mat(kTexPaper, {1, 1, 1}, 1.0f, 0.06f);
 	const float px[4] = {0.0f, 0.07f, 0.14f, 0.195f}, py[4] = {0.020f, 0.036f, 0.034f, 0.024f};
@@ -220,29 +402,21 @@ void table(MeshBuilder &mb, RoomInfo &info, Rng &rng) {
 				mb.quad(b, a, e, c, page, ub, 0.03f, ua, 0.97f);
 		}
 	mb.setTransform(saved);
+	greenSkull(mb, info, {-0.70f, h, -0.19f}, 25.0f);
+	potion(mb, info, {-0.56f, h, -0.21f}, {0.80f, 0.14f, 0.12f}, 0.9f);
+	potion(mb, info, {-0.47f, h, -0.19f}, {0.35f, 0.40f, 0.90f}, 0.7f);
 
-	// Bougie, fioles, parchemin roulé, plume et encrier, pile de livres
-	candlestick(mb, info, {0.42f, h, -0.18f}, 1.0f);
-	potion(mb, info, {-0.55f, h, -0.20f}, {0.80f, 0.14f, 0.12f}, 1.0f);
-	potion(mb, info, {-0.44f, h, -0.27f}, {0.16f, 0.70f, 0.32f}, 0.8f);
-	potion(mb, info, {-0.62f, h, -0.08f}, {0.35f, 0.40f, 0.90f}, 0.7f);
-	mb.rod({0.22f, h + 0.025f, 0.22f}, {0.56f, h + 0.025f, 0.30f}, 0.025f, 0.025f, 10, mat(kTexWhite, kPaperTint));
-	mb.quad({0.24f, h + 0.003f, 0.20f}, {0.58f, h + 0.003f, 0.28f}, {0.55f, h + 0.003f, 0.10f}, {0.21f, h + 0.003f, 0.02f},
-	        mat(kTexPaintMap, {1, 1, 1}, 1.0f, 0.05f), 0.1f, 0.5f, 0.9f, 0.9f);
+	// À droite : lanterne, encrier et plume, parchemin roulé
+	lantern(mb, info, {0.66f, h, -0.16f});
 	const ProfilePoint ink[] = {{0.0f, 0.0f}, {0.028f, 0.002f}, {0.030f, 0.03f}, {0.016f, 0.042f}, {0.018f, 0.048f}, {0.0f, 0.048f}};
-	mb.lathe({0.16f, h, -0.22f}, ink, 6, 8, mat(kTexMetal, {0.10f, 0.10f, 0.14f}, 4.0f));
-	mb.rod({0.16f, h + 0.04f, -0.22f}, {0.23f, h + 0.26f, -0.27f}, 0.003f, 0.002f, 4, mat(kTexWhite, {0.9f, 0.88f, 0.8f}));
+	mb.lathe({0.50f, h, -0.20f}, ink, 6, 8, mat(kTexMetal, {0.10f, 0.10f, 0.14f}, 4.0f));
+	mb.rod({0.50f, h + 0.04f, -0.20f}, {0.55f, h + 0.22f, -0.24f}, 0.003f, 0.002f, 4, mat(kTexWhite, {0.9f, 0.88f, 0.8f}));
 	Material feather = mat(kTexWhite, {0.88f, 0.86f, 0.80f});
-	Vec3 q0{0.185f, h + 0.12f, -0.238f}, q1{0.23f, h + 0.26f, -0.27f};
-	Vec3 off{0.030f, -0.006f, 0.020f};
+	Vec3 q0{0.518f, h + 0.11f, -0.214f}, q1{0.55f, h + 0.22f, -0.24f};
+	Vec3 off{0.026f, -0.006f, 0.018f};
 	mb.quad(q0, q0 + off, q1 + off * 0.5f, q1, feather);
 	mb.quad(q0 + off, q0, q1, q1 + off * 0.5f, feather);
-	float yy = h;
-	for (int k = 0; k < 3; k++) {
-		float t = rng.range(0.035f, 0.055f);
-		bookFlat(mb, rng, {-0.50f, yy, 0.22f}, 0.24f - 0.02f * (float)k, 0.18f, t, rng.range(-25.0f, 25.0f));
-		yy += t;
-	}
+	mb.rod({0.46f, h + 0.022f, 0.10f}, {0.72f, h + 0.022f, 0.16f}, 0.022f, 0.022f, 10, mat(kTexWhite, kPaperTint));
 }
 
 void stool(MeshBuilder &mb, RoomInfo &info) {
@@ -397,7 +571,7 @@ void shellOcclusion(MeshBuilder &mb, size_t from, size_t to) {
 
 } // namespace
 
-void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
+void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, const RoomOptions &opt) {
 	const ThemeInfo &th = themeInfo(theme);
 	Rng rng{12345u};
 	info = RoomInfo();
@@ -475,11 +649,25 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 		for (float z : {wz0 - 0.08f, wz1 + 0.08f})
 			mb.box({-X + 0.02f, (wys + wyr) * 0.5f, z}, {0.035f, (wyr - wys) * 0.5f, 0.08f}, mat(kTexStone, {1.08f, 1.05f, 1.0f}, 0.5f));
 		// Vue extérieure
-		const float sx = -X - 1.9f, half = 2.6f, ymid = 2.0f;
-		mb.quad({sx, ymid - half, wzc + half}, {sx, ymid - half, wzc - half}, {sx, ymid + half, wzc - half}, {sx, ymid + half, wzc + half},
-		        mat(kTexSky, {1, 1, 1}, 1.0f, 1.0f));
-		mb.quad({sx - 0.1f, -6, wzc + 8}, {sx - 0.1f, -6, wzc - 8}, {sx - 0.1f, 10, wzc - 8}, {sx - 0.1f, 10, wzc + 8},
-		        mat(kTexWhite, {0.01f, 0.01f, 0.015f}, 1.0f, 1.0f));
+		if (opt.windowImage && theme == kThemeKeep) {
+			// L'image du joueur, assez proche pour rester nette ; on la centre pour que son
+			// point d'intérêt (aux deux tiers à droite, un peu au-dessus du milieu) soit visible du fauteuil.
+			const float sx = -X - 0.9f, iw = 4.0f, ih = iw / opt.windowAspect;
+			const float zc = 0.0f, yc = 2.25f - (0.5f - 0.38f) * ih;
+			imageQuad(mb, {sx, yc - ih * 0.5f, zc + iw * 0.5f}, {sx, yc - ih * 0.5f, zc - iw * 0.5f}, {sx, yc + ih * 0.5f, zc - iw * 0.5f},
+			          {sx, yc + ih * 0.5f, zc + iw * 0.5f}, kTexImgWindowA, 1.0f);
+			// Au-delà des bords : ciel sombre en haut, terre sombre en bas
+			mb.quad({sx - 0.02f, yc + ih * 0.5f - 0.02f, zc + 6}, {sx - 0.02f, yc + ih * 0.5f - 0.02f, zc - 6}, {sx - 0.02f, 9, zc - 6}, {sx - 0.02f, 9, zc + 6},
+			        mat(kTexWhite, {0.24f, 0.20f, 0.36f}, 1.0f, 1.0f));
+			mb.quad({sx - 0.04f, -6, zc + 6}, {sx - 0.04f, -6, zc - 6}, {sx - 0.04f, yc + ih * 0.5f, zc - 6}, {sx - 0.04f, yc + ih * 0.5f, zc + 6},
+			        mat(kTexWhite, {0.05f, 0.09f, 0.05f}, 1.0f, 1.0f));
+		} else {
+			const float sx = -X - 1.9f, half = 2.6f, ymid = 2.0f;
+			mb.quad({sx, ymid - half, wzc + half}, {sx, ymid - half, wzc - half}, {sx, ymid + half, wzc - half}, {sx, ymid + half, wzc + half},
+			        mat(kTexSky, {1, 1, 1}, 1.0f, 1.0f));
+			mb.quad({sx - 0.1f, -6, wzc + 8}, {sx - 0.1f, -6, wzc - 8}, {sx - 0.1f, 10, wzc - 8}, {sx - 0.1f, 10, wzc + 8},
+			        mat(kTexWhite, {0.01f, 0.01f, 0.015f}, 1.0f, 1.0f));
+		}
 		// Vitrail
 		const float gx = -X - reveal * 0.55f, s = 1.4f;
 		Material glass = mat(kTexLattice, {0.55f, 0.60f, 0.66f}, 1.0f, 1.0f);
@@ -544,9 +732,19 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 		}
 		mb.resetTransform();
 		potion(mb, info, {fx - 0.12f, 1.365f, -0.15f}, {0.70f, 0.30f, 0.80f}, 1.2f);
-		// Tableau de la région
-		mb.setTransform(place({fx - 0.012f, 2.22f, -0.6f}, -90.0f));
-		painting(mb, 1.15f, 0.86f, kTexPaintTheme);
+		rubyOnStand(mb, info, {fx - 0.12f, 1.365f, -0.6f});
+		// Au-dessus : le portrait fourni par le joueur, sinon un tableau du château
+		mb.setTransform(place({fx - 0.012f, 2.27f, -0.6f}, -90.0f));
+		if (opt.portraitImage) {
+			float pw = 1.25f, ph = pw / opt.portraitAspect;
+			if (ph > 1.05f) {
+				ph = 1.05f;
+				pw = ph * opt.portraitAspect;
+			}
+			paintingImage(mb, pw, ph, kTexImgPortraitA);
+		} else {
+			painting(mb, 1.15f, 0.86f, kTexPaintCastle);
+		}
 		mb.resetTransform();
 	}
 
@@ -580,19 +778,26 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 		const ProfilePoint vase[] = {{0.0f, 0.0f}, {0.06f, 0.006f}, {0.10f, 0.10f}, {0.085f, 0.20f}, {0.04f, 0.27f}, {0.055f, 0.30f}, {0.0f, 0.30f}};
 		mb.lathe({-0.40f, ch + 0.04f, cz}, vase, 7, 14, mat(kTexMetal, kBrass, 4.0f));
 		for (float sx : {-1.0f, 1.0f}) {
-			mb.setTransform(place({sx * 1.78f, 2.95f, ZF + 0.01f}, 0.0f));
-			banner(mb, 0.62f, 1.75f, {th.banner[0], th.banner[1], th.banner[2]});
-			mb.setTransform(place({sx * 1.18f, 2.05f, ZF}, 0.0f));
+			mb.setTransform(place({sx * 2.12f, 2.95f, ZF + 0.01f}, 0.0f));
+			banner(mb, 0.58f, 1.75f, {th.banner[0], th.banner[1], th.banner[2]});
+			mb.setTransform(place({sx * 1.62f, 2.05f, ZF}, 0.0f));
 			sconce(mb, info);
 		}
 		mb.setTransform(place({0, 2.72f, ZF + 0.01f}, 0.0f));
 		shieldAndSwords(mb, {th.banner[0], th.banner[1], th.banner[2]});
+		// De part et d'autre de l'écran : deux reliques sur leur socle
+		mb.setTransform(place({2.05f, 0, -2.62f}, -24.0f));
+		pedestal(mb, info, 1.05f);
+		darkMask(mb, info, {0, 1.05f, 0});
+		mb.setTransform(place({-2.05f, 0, -2.62f}, 24.0f));
+		pedestal(mb, info, 1.05f);
+		runeCube(mb, info, {0, 1.05f + 0.20f, 0});
 		mb.resetTransform();
 	}
 
 	// --- Mur de gauche, partie arrière : bannière, carte encadrée, globe ---
-	mb.setTransform(place({-X + 0.01f, 2.95f, 0.62f}, 90.0f));
-	banner(mb, 0.58f, 1.70f, {th.banner[0], th.banner[1], th.banner[2]});
+	mb.setTransform(place({-X + 0.012f, 2.02f, 0.70f}, 90.0f));
+	painting(mb, 0.84f, 0.63f, kTexPaintTheme);
 	mb.setTransform(place({-X + 0.012f, 1.85f, 1.72f}, 90.0f));
 	painting(mb, 0.92f, 0.92f, kTexPaintMap);
 	mb.setTransform(place({-1.95f, 0, 0.95f}, 30.0f));
@@ -600,6 +805,7 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 	// Coffre sous la fenêtre
 	mb.setTransform(place({-X + 0.34f, 0, wzc}, 90.0f));
 	chest(mb, info);
+	emeraldBlade(mb, info, {0, 0.52f, 0});
 	mb.resetTransform();
 
 	// --- Mur arrière : porte, tableau, appliques ---
@@ -614,9 +820,9 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 	mb.resetTransform();
 
 	// --- Table de travail, tabouret, tapis, lustre ---
-	mb.setTransform(place({1.52f, 0, -1.50f}, -24.0f));
+	mb.setTransform(place({0, 0, -0.62f}, 0.0f));
 	table(mb, info, rng);
-	mb.setTransform(place({0.98f, 0, -0.88f}, 0.0f));
+	mb.setTransform(place({1.45f, 0, -0.25f}, 0.0f));
 	stool(mb, info);
 	mb.resetTransform();
 	{
@@ -630,7 +836,8 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 				        {-rw * 0.5f + rw * u1, 0.006f, rz + rd * 0.5f - rd * v1}, {-rw * 0.5f + rw * u0, 0.006f, rz + rd * 0.5f - rd * v1}, rug, u0, v0, u1, v1);
 			}
 	}
-	chandelier(mb, info, {0, 2.42f, -1.15f});
+	// Le lustre est au-dessus et en arrière du fauteuil : jamais entre le regard et l'écran.
+	chandelier(mb, info, {0, 2.62f, 0.75f});
 	// Quelques livres empilés par terre
 	{
 		float yy = 0.0f;
@@ -646,11 +853,11 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme) {
 	Vec3 warm = {1.0f, 0.60f, 0.26f};
 	Vec3 fire = {1.0f * th.fireTint[0], 0.46f * th.fireTint[1], 0.15f * th.fireTint[2]};
 	info.lights.push_back({{fx - 0.55f, 0.60f, -0.6f}, fire * 2.4f, 1.7f, 1.0f, kLightFire});
-	info.lights.push_back({{1.80f, 1.12f, -1.55f}, warm * 0.70f, 0.8f, 0.6f, kLightWarm});
-	info.lights.push_back({{0, 2.30f, -1.15f}, warm * 0.85f, 1.7f, 0.25f, kLightWarm});
+	info.lights.push_back({{0.66f, kTableHeight + 0.30f, -0.72f}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
+	info.lights.push_back({{0, 2.45f, 0.75f}, warm * 0.85f, 1.8f, 0.10f, kLightWarm});
 	info.lights.push_back({{-X + 0.55f, 1.85f, wzc}, Vec3{th.windowLight[0], th.windowLight[1], th.windowLight[2]} * 2.6f, 1.9f, 0.0f, kLightWindow});
-	info.lights.push_back({{-1.18f, 2.05f, ZF + 0.35f}, warm * 0.50f, 0.9f, 0.5f, kLightWarm});
-	info.lights.push_back({{1.18f, 2.05f, ZF + 0.35f}, warm * 0.50f, 0.9f, 0.5f, kLightWarm});
+	info.lights.push_back({{-1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});
+	info.lights.push_back({{1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});
 	info.lights.push_back({{-0.15f, 2.05f, ZB - 0.45f}, warm * 0.60f, 1.1f, 0.5f, kLightWarm});
 }
 

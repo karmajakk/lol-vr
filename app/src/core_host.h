@@ -38,7 +38,9 @@ struct GameState {
 	uint32_t hitSerial = 0;   // le groupe blesse un monstre
 	int hitDamage = 0;
 	uint32_t loopSerial = 0;  // augmente à chaque tour de la boucle du donjon (vue de jeu active)
-	int controlMode = 0;      // 0 = vue normale ; autre = écran d'inventaire ou de personnage
+	int controlMode = 0;      // 0 = vue normale ; autre = scène spéciale sur toute la largeur
+	bool automapOpen = false; // la carte (atlas) occupe tout l'écran
+	bool menuOpen = false;    // un menu du jeu est affiché
 };
 
 class CoreHost {

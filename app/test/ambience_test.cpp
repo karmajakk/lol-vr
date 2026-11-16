@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
 	amb.setSampleRate(rate);
 	amb.setScreen({0, 0, -2.2f}, {0, 0, 0, 1}, 2.4f);
 	amb.setRoom({0, -1.25f, 0}, 0.0f);
+	amb.setFire(true);
 	int failures = 0;
 
 	// 1. Ambiance seule, pour chaque zone : pas de saturation, niveau raisonnable.

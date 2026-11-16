@@ -12,8 +12,13 @@
 #include <vector>
 
 #include "../src/proctex.h"
-#include "../src/scene.h"
 #include "../src/room.h"
+#include "../src/scene.h"
+#include "../src/ui.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "../src/third_party/stb_image.h"
 
 using namespace lolvr;
 
@@ -43,32 +48,68 @@ static GLuint makeProgram(const char *vs, const char *fs) {
 	return p;
 }
 
-// Fausse image de jeu (aucune donnée du vrai jeu ici) : une vue de couloir schématique et une interface.
+// Fausse image de jeu (aucune donnée du vrai jeu ici) : un schéma qui reprend la disposition de
+// l'écran — vue du donjon, colonnes de gauche et de droite, messages, portraits, inventaire.
 static GLuint makeFakeGame() {
 	std::vector<uint8_t> px(320 * 200 * 4);
+	auto in = [](int x, int y, int x0, int y0, int w, int h) { return x >= x0 && x < x0 + w && y >= y0 && y < y0 + h; };
 	for (int y = 0; y < 200; y++)
 		for (int x = 0; x < 320; x++) {
 			uint8_t *p = &px[(y * 320 + x) * 4];
-			float r = 0.10f, g = 0.09f, b = 0.08f;
-			if (x >= 112 && x < 288 && y < 120) {
+			float r = 0.16f, g = 0.13f, b = 0.10f; // pierre du pourtour
+			if ((x / 8 + y / 8) % 2 == 0) { r *= 0.9f; g *= 0.9f; b *= 0.9f; }
+			if (in(x, y, 112, 0, 176, 120)) {
+				// Vue du donjon : un couloir
 				float cx = (x - 200) / 88.0f, cy = (y - 60) / 60.0f;
 				float d = fmaxf(fabsf(cx), fabsf(cy));
 				float shade = 0.15f + 0.6f * d;
 				r = 0.45f * shade; g = 0.40f * shade; b = 0.33f * shade;
 				if (d < 0.25f) { r = 0.05f; g = 0.04f; b = 0.06f; }
 				if (((int)(d * 8)) % 2 == 0) { r *= 0.85f; g *= 0.85f; b *= 0.85f; }
-			} else if (x < 112 && y < 120) {
-				r = 0.25f; g = 0.18f; b = 0.10f;
-				if ((x / 4 + y / 4) % 7 == 0) { r = 0.6f; g = 0.5f; b = 0.2f; }
-			} else if (y >= 120 && y < 180) {
-				int slot = x / 80;
-				r = 0.20f + 0.05f * slot; g = 0.16f; b = 0.12f;
-				if (x % 80 > 8 && x % 80 < 40 && y > 126 && y < 170) { r = 0.75f; g = 0.55f; b = 0.42f; }
-				if (x % 80 > 44 && x % 80 < 50 && y > 126) { r = 0.1f; g = 0.7f; b = 0.2f; }
-				if (x % 80 > 54 && x % 80 < 60 && y > 140) { r = 0.2f; g = 0.3f; b = 0.9f; }
-			} else if (y >= 180) {
-				r = 0.15f; g = 0.12f; b = 0.10f;
-				if ((x / 16) % 2 == 0 && y > 184 && y < 196) { r = 0.5f; g = 0.42f; b = 0.25f; }
+			} else if (in(x, y, 12, 0, 87, 100)) {
+				// Parchemin des sorts
+				r = 0.70f; g = 0.60f; b = 0.40f;
+				if (y > 14 && (y - 14) % 12 < 2 && x > 20 && x < 20 + 40 + (y * 7) % 30) { r = 0.25f; g = 0.15f; b = 0.10f; }
+			} else if (in(x, y, 12, 132, 63, 36)) {
+				// Flèches de déplacement (3 x 2)
+				int bx = (x - 12) % 21, by = (y - 132) % 18;
+				r = 0.42f; g = 0.36f; b = 0.28f;
+				if (bx > 6 && bx < 14 && by > 5 && by < 12) { r = 0.9f; g = 0.8f; b = 0.5f; }
+				if (bx == 0 || by == 0) { r = 0.1f; g = 0.08f; b = 0.06f; }
+			} else if (in(x, y, 12, 180, 40, 16)) {
+				r = (x - 12) / 21 == 0 ? 0.3f : 0.55f; g = 0.35f; b = 0.5f; // options, repos
+			} else if (in(x, y, 288, 0, 32, 32)) {
+				// Boussole
+				float dx = x - 304.0f, dy = y - 16.0f, rr = sqrtf(dx * dx + dy * dy);
+				r = 0.2f; g = 0.2f; b = 0.25f;
+				if (rr < 14) { r = 0.75f; g = 0.65f; b = 0.35f; }
+				if (rr < 12 && fabsf(dx) < 1.5f && dy < 0) { r = 0.8f; g = 0.1f; b = 0.1f; }
+			} else if (in(x, y, 290, 34, 28, 20)) {
+				r = 0.45f; g = 0.25f; b = 0.12f; // atlas
+			} else if (in(x, y, 292, 58, 24, 30)) {
+				r = 0.85f; g = 0.7f; b = 0.25f; // lampe
+			} else if (in(x, y, 83, 122, 235, 18)) {
+				// Ligne de messages
+				r = 0.06f; g = 0.05f; b = 0.07f;
+				if (y > 127 && y < 134 && x > 90 && x < 250 && (x / 5) % 4 != 3) { r = 0.8f; g = 0.75f; b = 0.6f; }
+			} else if (in(x, y, 84, 143, 232, 34)) {
+				// Trois portraits avec leurs barres
+				int slot = (x - 87) / 76, lx = (x - 87) % 76;
+				if (x >= 87 && slot < 3 && lx < 66) {
+					r = 0.22f + 0.06f * slot; g = 0.14f; b = 0.12f;
+					if (lx > 1 && lx < 32) { r = 0.78f; g = 0.58f; b = 0.45f; }
+					if (lx >= 33 && lx < 38) { r = 0.2f; g = 0.3f; b = 0.9f; }
+					if (lx >= 39 && lx < 44) { r = 0.1f; g = 0.7f; b = 0.2f; }
+					if (lx >= 46 && lx < 64 && y > 146 && y < 160) { r = 0.6f; g = 0.6f; b = 0.65f; }
+					if (lx >= 46 && lx < 64 && y > 162 && y < 175) { r = 0.5f; g = 0.3f; b = 0.7f; }
+				}
+			} else if (in(x, y, 86, 179, 232, 20)) {
+				// Inventaire : neuf cases et deux flèches
+				int lx = (x - 106) % 21;
+				r = 0.13f; g = 0.11f; b = 0.10f;
+				if (x >= 106 && x < 295 && lx > 0 && lx < 20 && y > 180 && y < 198) { r = 0.30f; g = 0.26f; b = 0.20f; }
+				if (x >= 106 && x < 295 && lx > 5 && lx < 15 && y > 184 && y < 194 && ((x - 106) / 21) % 3 != 2) { r = 0.75f; g = 0.6f; b = 0.25f; }
+				if (x < 104 || x > 297) { r = 0.6f; g = 0.5f; b = 0.3f; }
 			}
 			p[0] = (uint8_t)(r * 255); p[1] = (uint8_t)(g * 255); p[2] = (uint8_t)(b * 255); p[3] = 255;
 		}
@@ -83,6 +124,22 @@ static GLuint makeFakeGame() {
 	return t;
 }
 
+// Charge une image du dossier donné par la variable LOLVR_DECOR (facultatif).
+static void loadDecor(Scene &scene, int slot, const char *name) {
+	const char *dir = getenv("LOLVR_DECOR");
+	if (!dir)
+		return;
+	std::string path = std::string(dir) + "/" + name + ".png";
+	int w = 0, h = 0, comp = 0;
+	unsigned char *px = stbi_load(path.c_str(), &w, &h, &comp, 4);
+	if (!px) {
+		fprintf(stderr, "image absente : %s\n", path.c_str());
+		return;
+	}
+	scene.setImage(slot, px, w, h);
+	stbi_image_free(px);
+}
+
 struct Shot {
 	const char *name;
 	int env, theme;
@@ -91,6 +148,7 @@ struct Shot {
 	float tanHalf; // demi-champ horizontal
 	bool hands;
 	float trigger, grip;
+	int mode = 0; // 0 image entière, 1 interface détachée, 2 détachée + clavier ouvert
 };
 
 int main(int argc, char **argv) {
@@ -147,9 +205,12 @@ int main(int argc, char **argv) {
 	GLuint game = makeFakeGame();
 	Scene scene;
 	scene.init(true);
+	Ui ui;
+	ui.initGl(true);
+	ui.setOptions(false, true);
 
 	SceneState st;
-	st.screenPos = {0, 1.20f, -2.2f};
+	st.screenPos = {0, 1.30f, -2.2f};
 	st.screenWidth = 2.4f;
 	st.roomPos = {0, 0, 0};
 	st.gameTexture = game;
@@ -160,35 +221,166 @@ int main(int argc, char **argv) {
 		scene.prepare(st);
 		usleep(5000);
 	}
+	loadDecor(scene, 0, "fenetre");
+	loadDecor(scene, 1, "portrait");
 	st.time = 3.0; // après le fondu d'apparition
 
-	const Vec3 seat{0, 1.25f, 0};
+	// Joueur assis à la table : yeux à 1,20 m.
+	const Vec3 seat{0, 1.20f, 0};
 	const Shot shots[] = {
 		{"lib_front", kEnvLibrary, kThemeKeep, seat, 0, 0, 1.15f, true, 0.0f, 0.0f},
 		{"lib_left", kEnvLibrary, kThemeKeep, seat, 75, 5, 1.15f, false, 0, 0},
 		{"lib_right", kEnvLibrary, kThemeKeep, seat, -75, -5, 1.15f, false, 0, 0},
-		{"lib_back", kEnvLibrary, kThemeKeep, seat, 180, 0, 1.15f, false, 0, 0},
+		{"lib_back", kEnvLibrary, kThemeKeep, seat, 180, 10, 1.15f, false, 0, 0},
 		{"lib_up", kEnvLibrary, kThemeKeep, seat, 0, 55, 1.15f, false, 0, 0},
-		{"lib_down", kEnvLibrary, kThemeKeep, seat, -35, -45, 1.15f, false, 0, 0},
+		{"lib_table", kEnvLibrary, kThemeKeep, seat, 0, -40, 1.15f, true, 0, 0},
 		{"lib_wide", kEnvLibrary, kThemeKeep, {1.9f, 2.4f, 2.2f}, 40, -22, 1.0f, false, 0, 0},
-		{"lib_table", kEnvLibrary, kThemeKeep, {0.9f, 1.35f, -0.6f}, -40, -30, 0.8f, false, 0, 0},
-		{"hands", kEnvLibrary, kThemeKeep, seat, 0, -22, 0.75f, true, 0.0f, 0.0f},
-		{"hands_closed", kEnvLibrary, kThemeKeep, {0.05f, 1.15f, -0.15f}, 0, -25, 0.5f, true, 1.0f, 1.0f},
+		{"lib_stand", kEnvLibrary, kThemeKeep, {0, 1.70f, 0}, 0, 0, 1.15f, false, 0, 0},
+		{"window_close", kEnvLibrary, kThemeKeep, {-0.6f, 1.6f, -0.3f}, 80, 12, 0.6f, false, 0, 0},
+		{"portrait_close", kEnvLibrary, kThemeKeep, {0.4f, 1.5f, -0.6f}, -90, 18, 0.75f, false, 0, 0},
+		{"relics", kEnvLibrary, kThemeKeep, {0, 1.4f, -1.2f}, 0, -8, 1.3f, false, 0, 0},
 		{"forest_left", kEnvLibrary, kThemeForest, seat, 75, 5, 1.15f, false, 0, 0},
-		{"forest_front", kEnvLibrary, kThemeForest, seat, 20, 0, 1.15f, false, 0, 0},
-		{"cave_left", kEnvLibrary, kThemeCave, seat, 75, 5, 1.15f, false, 0, 0},
-		{"cimmeria_right", kEnvLibrary, kThemeCimmeria, seat, -60, 0, 1.15f, false, 0, 0},
-		{"tower_left", kEnvLibrary, kThemeTower, seat, 60, 5, 1.15f, false, 0, 0},
 		{"pt_frame", kEnvPassthroughFrame, kThemeKeep, seat, 0, 0, 1.15f, true, 0.0f, 0.0f},
-		{"pt_crt", kEnvPassthroughCrt, kThemeKeep, seat, 0, 0, 1.15f, true, 0.0f, 0.0f},
-		{"pt_crt_side", kEnvPassthroughCrt, kThemeKeep, {1.1f, 1.45f, -0.7f}, 35, -10, 0.8f, false, 0, 0},
-		{"frame_close", kEnvLibrary, kThemeKeep, {0.9f, 1.9f, -1.5f}, 25, -5, 0.6f, false, 0, 0},
-		{"win_front", kEnvWindow, kThemeKeep, seat, 0, 0, 1.15f, false, 0, 0},
-		{"win_watch", kEnvWindow, kThemeKeep, seat, 0, -30, 0.78f, true, 0.0f, 0.2f},
-		{"win_watch_r", kEnvWindow, kThemeKeep, seat, 0, -30, 0.78f, true, 0.0f, 0.2f},
-		{"win_tablet", kEnvWindow, kThemeKeep, seat, 0, -12, 0.9f, true, 0.0f, 0.0f},
-		{"win_cut", kEnvWindow, kThemeKeep, seat, 0, 0, 1.15f, false, 0, 0},
+		{"pt_crt", kEnvPassthroughCrt, kThemeKeep, seat, 0, -8, 1.15f, true, 0.0f, 0.0f},
+		{"pt_crt_side", kEnvPassthroughCrt, kThemeKeep, {1.1f, 1.45f, -0.5f}, 38, -14, 0.8f, false, 0, 0},
+		{"split_front", kEnvLibrary, kThemeKeep, seat, 0, -8, 1.25f, true, 0.0f, 0.0f, 1},
+		{"split_down", kEnvLibrary, kThemeKeep, seat, 0, -32, 1.0f, true, 0.0f, 0.0f, 1},
+		{"split_left", kEnvLibrary, kThemeKeep, seat, 42, -10, 1.0f, false, 0, 0, 1},
+		{"split_right", kEnvLibrary, kThemeKeep, seat, -42, -12, 1.0f, false, 0, 0, 1},
+		{"split_pt", kEnvPassthroughFrame, kThemeKeep, seat, 0, -10, 1.25f, true, 0.0f, 0.0f, 1},
+		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
+
+	// --- Essai de l'interface sans casque : pointage, poignées, clavier ---
+	if (argc > 2 && !strcmp(argv[2], "uitest")) {
+		int failures = 0;
+		auto check = [&](bool ok, const char *what) {
+			printf("%-58s %s\n", what, ok ? "ok" : "ÉCHEC");
+			failures += ok ? 0 : 1;
+		};
+		UiFrameInput in;
+		in.anchorPos = seat;
+		in.screenPos = {0, 1.30f, -2.2f};
+		in.dispH = 1.8f;
+		in.dispW = 1.8f * 176.0f / 144.0f;
+		in.cropX = 112; in.cropY = 0; in.cropW = 176; in.cropH = 120;
+		in.split = true;
+		in.aimValid = true;
+		in.tip = {0.2f, 0.95f, -0.3f};
+		ui.resetLayout(in);
+		UiFrameOutput o;
+		SceneState tmp;
+		auto aimAt = [&](Vec3 target) { in.dir = normalize(target - in.tip); };
+		auto panelCenter = [&](int id) {
+			const UiPlacement &pl = ui.placement[id];
+			return in.anchorPos + Vec3{-sinf(pl.yaw) * cosf(pl.pitch), sinf(pl.pitch), -cosf(pl.yaw) * cosf(pl.pitch)} * pl.dist;
+		};
+		// 1. Le centre de l'écran donne le centre de la vue du donjon
+		aimAt(in.screenPos);
+		ui.update(in, o, tmp);
+		check(o.pointerValid && fabsf(o.gu * 320 - 200) < 1.5f && fabsf(o.gv * 200 - 60) < 1.5f && o.buttonsToGame, "écran : centre de la vue du donjon (200, 60)");
+		// 2. Le centre de chaque panneau donne le centre de sa zone de l'image
+		const float want[5][2] = {{201.5f, 150}, {201.5f, 189}, {56, 64}, {42, 164}, {304, 61}};
+		const char *names[5] = {"panneau du groupe", "panneau de l'inventaire", "panneau des sorts", "panneau des commandes", "panneau de la boussole"};
+		for (int i = 0; i < 5; i++) {
+			aimAt(panelCenter(i));
+			ui.update(in, o, tmp);
+			check(o.pointerValid && fabsf(o.gu * 320 - want[i][0]) < 1.5f && fabsf(o.gv * 200 - want[i][1]) < 1.5f && o.buttonsToGame, names[i]);
+		}
+		// 3. Les panneaux sont bien visibles dans la scène, avec leurs poignées
+		int np = 0, nh = 0;
+		for (int i = 0; i < SceneState::kMaxPanels; i++) np += tmp.panels[i].visible ? 1 : 0;
+		for (int i = 0; i < SceneState::kMaxHandles; i++) nh += tmp.handles[i].visible ? 1 : 0;
+		check(np == 5 && nh == 6, "5 panneaux et 6 poignées (dont celle de l'écran)");
+		// 4. Poignée de l'inventaire : on l'attrape, on la déplace, on la lâche
+		{
+			int id = kPanelInventory;
+			UiPlacement before = ui.placement[id];
+			// La poignée est juste au-dessus du panneau
+			Vec3 c = panelCenter(id);
+			float hh = 22 * 1.2f * before.scale * 0.5f;
+			Vec3 handle = c + Vec3{0, cosf(before.pitch), sinf(before.pitch)} * (hh + 0.012f * before.dist + 0.013f * before.dist);
+			aimAt(handle);
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.grabbed && o.dragging && !o.buttonsToGame, "poignée de l'inventaire : prise");
+			in.triggerPressed = false;
+			aimAt(handle + Vec3{0.25f, 0.10f, 0});
+			ui.update(in, o, tmp);
+			UiPlacement after = ui.placement[id];
+			check(o.dragging && after.yaw < before.yaw - 0.1f && after.pitch > before.pitch + 0.05f, "le panneau suit le doigt (vers la droite et le haut)");
+			in.stickX = 1.0f; in.dt = 0.5f;
+			ui.update(in, o, tmp);
+			check(ui.placement[id].scale > after.scale * 1.2f, "joystick à droite : le panneau grandit");
+			in.stickX = 0; in.stickY = 1.0f;
+			float d0 = ui.placement[id].dist;
+			ui.update(in, o, tmp);
+			check(ui.placement[id].dist > d0 * 1.2f, "joystick vers l'avant : le panneau s'éloigne");
+			in.stickY = 0; in.dt = 0.016f;
+			in.triggerDown = false;
+			ui.update(in, o, tmp);
+			check(o.released && o.layoutChanged && !o.dragging, "poignée lâchée : disposition à mémoriser");
+			ui.resetLayout(in);
+		}
+		// 5. Poignée de l'écran
+		{
+			Vec3 handle = in.screenPos + Vec3{0, in.dispH * 0.5f + 0.165f * in.dispW + 0.011f * 2.2f, 0.02f * in.dispW};
+			aimAt(handle);
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.grabbed && o.screenDragging, "poignée de l'écran : prise");
+			in.triggerPressed = false;
+			aimAt(handle + Vec3{-0.5f, 0, 0});
+			ui.update(in, o, tmp);
+			check(o.screenDragging && o.screenCenter.x < in.screenPos.x - 0.3f && fabsf(o.screenCenter.y - in.screenPos.y) < 0.1f, "l'écran suit le doigt vers la gauche");
+			in.triggerDown = false;
+			ui.update(in, o, tmp);
+		}
+		// 6. Clavier : la touche « q », puis Maj + « a »
+		{
+			in.keyboardOpen = true;
+			const UiPlacement &kb = ui.placement[kPanelKeyboard];
+			Vec3 c = panelCenter(kPanelKeyboard);
+			Vec3 up{0, cosf(kb.pitch), sinf(kb.pitch)}, right{1, 0, 0};
+			auto keyPos = [&](float col, float row) {
+				return c + right * ((col - 5.5f) * 46 * kb.scale) + up * ((3.0f - row) * 40 * kb.scale);
+			};
+			auto press = [&](float col, float row) {
+				aimAt(keyPos(col, row));
+				in.triggerDown = in.triggerPressed = true;
+				ui.update(in, o, tmp);
+				UiFrameOutput first = o;
+				in.triggerDown = in.triggerPressed = false;
+				ui.update(in, o, tmp);
+				return first;
+			};
+			UiFrameOutput k = press(0.5f, 2.5f);
+			check(k.keyCount == 1 && k.keys[0] == 'q' && k.keyMods[0] == 0 && !k.buttonsToGame, "clavier : touche q");
+			press(0.5f, 4.5f);
+			k = press(0.5f, 3.5f);
+			check(k.keyCount == 1 && k.keys[0] == 'a' && k.keyMods[0] == kUiModShift, "clavier : Maj puis a = A");
+			k = press(9.5f, 5.5f);
+			check(k.keyCount == 1 && k.keys[0] == 13, "clavier : Entrée");
+			k = press(1.0f, 0.5f);
+			check(k.action == kUiActionToggleFire, "clavier : bouton du feu");
+			k = press(10.0f, 0.5f);
+			check(k.action == kUiActionCloseKeyboard, "clavier : bouton Fermer");
+			in.keyboardOpen = false;
+		}
+		// 7. Image entière : pas de panneaux, le coin de l'écran donne le coin de l'image
+		{
+			in.split = false;
+			in.dispW = 2.4f; in.dispH = 1.8f;
+			in.cropX = 0; in.cropY = 0; in.cropW = 320; in.cropH = 200;
+			aimAt(in.screenPos + Vec3{-1.19f, 0.89f, 0});
+			ui.update(in, o, tmp);
+			int n = 0;
+			for (int i = 0; i < SceneState::kMaxPanels; i++) n += tmp.panels[i].visible ? 1 : 0;
+			check(n == 0 && o.pointerValid && o.gu * 320 < 3.0f && o.gv * 200 < 3.0f, "image entière : aucun panneau, coin haut gauche");
+		}
+		printf("%s\n", failures ? "ÉCHEC" : "TOUT EST BON");
+		return failures ? 1 : 0;
+	}
 
 	std::vector<uint8_t> buf(W * H * 4);
 	for (const Shot &sh : shots) {
@@ -200,96 +392,70 @@ int main(int argc, char **argv) {
 			continue;
 		st.environment = sh.env;
 		st.theme = sh.theme;
-		const bool win = sh.env == kEnvWindow;
-		const bool cutscene = !strcmp(sh.name, "win_cut");
-		float rect[4] = {0, 0, 1, 1};
-		float quadW = 2.4f, quadH = 1.8f;
-		st.frameVisible = true;
-		for (int i = 0; i < SceneState::kMaxPanels; i++)
-			st.panels[i].visible = false;
-		if (win && !cutscene) {
-			st.frameVisible = false;
-			rect[0] = 112.0f / 320.0f; rect[1] = 0.0f; rect[2] = 176.0f / 320.0f; rect[3] = 120.0f / 200.0f;
-			quadW = 2.0f;
-			quadH = 2.0f * 144.0f / 176.0f;
-			st.screenWidth = quadW;
-			st.screenPos = {0, 1.22f, -1.4f};
-		} else if (win) {
-			quadW = 2.6f;
-			quadH = 1.95f;
-			st.screenWidth = quadW;
-			st.screenPos = {0, 1.22f, -1.4f};
-		} else if (sh.env == kEnvPassthroughCrt) {
-			st.screenWidth = 1.0f;
-			st.screenPos = {0, 1.15f, -1.3f};
-		} else {
-			st.screenWidth = 2.4f;
-			st.screenPos = {0, 1.20f, -2.2f};
+		const bool split = sh.mode >= 1;
+		// Écran : image entière (4:3), ou vue du donjon seule à la même hauteur.
+		float fullW = 2.4f;
+		Vec3 screenPos = {0, 1.30f, -2.2f};
+		if (sh.env == kEnvPassthroughCrt) {
+			fullW = 0.62f;
+			screenPos = {0, 1.02f, -0.95f};
+		} else if (sh.env == kEnvPassthroughFrame) {
+			fullW = 1.8f;
+			screenPos = {0, 1.25f, -2.0f};
 		}
+		float rect[4] = {0, 0, 1, 1};
+		float quadW = fullW, quadH = fullW * 0.75f;
+		if (split) {
+			rect[0] = 112.0f / 320.0f; rect[1] = 0.0f; rect[2] = 176.0f / 320.0f; rect[3] = 120.0f / 200.0f;
+			quadW = quadH * 176.0f / 144.0f;
+		}
+		st.screenPos = screenPos;
+		st.screenWidth = quadW;
+		st.screenAspect = quadH / quadW;
 		for (int h = 0; h < 2; h++) {
 			HandState &hand = st.hands[h];
 			hand.visible = sh.hands;
 			float sx = h == 0 ? -1.0f : 1.0f;
-			hand.pos = {sx * 0.22f, 0.98f, -0.42f};
+			hand.pos = {sx * 0.24f, 0.90f, -0.36f};
 			hand.rot = multiply(quatYaw(-sx * 0.12f), quatAxisAngle({1, 0, 0}, 0.12f));
 			hand.trigger = sh.trigger;
 			hand.grip = sh.grip;
 			hand.pointing = h == 1;
 		}
-		const float deg = 3.14159265f / 180.0f;
-		const bool watch = !strcmp(sh.name, "win_watch") || !strcmp(sh.name, "win_watch_r");
-		const bool mirrored = !strcmp(sh.name, "win_watch_r");
-		const bool tablet = !strcmp(sh.name, "win_tablet");
-		if (watch) {
-			// Geste « regarder sa montre » : avant-bras en travers, dos de la main vers le haut.
-			int np = mirrored ? 1 : 0;
-			float sx = mirrored ? -1.0f : 1.0f;
-			st.hands[np].pos = {sx * 0.20f, 0.95f, -0.40f};
-			st.hands[np].rot = multiply(quatAxisAngle({1, 0, 0}, 38.0f * deg),
-			                            multiply(quatYaw(-sx * 90.0f * deg), quatAxisAngle({0, 0, 1}, -sx * 90.0f * deg)));
-			st.hands[np].pointing = false;
-			st.hands[1 - np].pos = {sx * 0.30f, 0.93f, -0.30f};
-			st.hands[1 - np].rot = multiply(quatYaw(sx * 70.0f * deg), quatAxisAngle({1, 0, 0}, 14.0f * deg));
-			st.hands[1 - np].pointing = true;
-		}
-		if (tablet) {
-			st.hands[0].pos = {-0.12f, 1.12f, -0.38f};
-			st.hands[0].rot = quatAxisAngle({1, 0, 0}, 0.5f);
-			st.hands[0].pointing = false;
-			st.hands[1].pointing = true;
-		}
-		if (win && st.frameVisible == false && sh.hands) {
-			int np = (watch && mirrored) ? 1 : 0;
-			SceneState::Panel &bar = st.panels[0];
-			Vec3 c, r, u, n;
-			wristPanelFrame(np == 0, c, r, u, n);
-			if (np != 0) {
-				r = r * -1.0f;
-				u = u * -1.0f;
+		// Interface : mêmes calculs que dans le casque
+		UiFrameInput in;
+		in.anchorPos = seat;
+		in.anchorYaw = 0.0f;
+		in.screenPos = st.screenPos;
+		in.screenRot = st.screenRot;
+		in.dispW = quadW;
+		in.dispH = quadH;
+		in.cropX = rect[0] * 320.0f; in.cropY = rect[1] * 200.0f; in.cropW = rect[2] * 320.0f; in.cropH = rect[3] * 200.0f;
+		in.crt = sh.env == kEnvPassthroughCrt;
+		in.split = split;
+		in.atlasVisible = split;
+		in.atlasTexture = game;
+		in.keyboardOpen = sh.mode == 2;
+		in.aimValid = sh.hands;
+		if (sh.hands) {
+			const HandState &hand = st.hands[1];
+			in.tip = hand.pos + rotate(hand.rot, gloveFingertip(false, 0.0f));
+			if (sh.mode == 2) {
+				// Le doigt vise une touche du clavier
+				st.hands[1].rot = multiply(quatYaw(0.30f), quatAxisAngle({1, 0, 0}, -0.55f));
+				in.tip = st.hands[1].pos + rotate(st.hands[1].rot, gloveFingertip(false, 0.0f));
 			}
-			bar.center = st.hands[np].pos + rotate(st.hands[np].rot, c);
-			bar.right = rotate(st.hands[np].rot, r);
-			bar.up = rotate(st.hands[np].rot, u);
-			bar.halfW = 0.125f;
-			bar.halfH = bar.halfW * (58.0f / 234.0f) * 1.2f;
-			bar.u0 = 84.0f / 320.0f; bar.u1 = 318.0f / 320.0f; bar.v0 = 141.0f / 200.0f; bar.v1 = 199.5f / 200.0f;
-			bar.alpha = 1.0f;
-			bar.visible = true;
-			if (tablet) {
-				SceneState::Panel &tb = st.panels[1];
-				Vec3 hp = st.hands[0].pos;
-				Vec3 cc = hp + Vec3{0, 0.14f, 0};
-				Vec3 nn = normalize(sh.eye - cc);
-				Vec3 rr = normalize(cross({0, 1, 0}, nn));
-				tb.center = cc; tb.right = rr; tb.up = cross(nn, rr);
-				tb.halfW = 0.17f; tb.halfH = 0.17f * 0.75f;
-				tb.u0 = 0; tb.u1 = 1; tb.v0 = 0; tb.v1 = 1;
-				tb.alpha = 1.0f;
-				tb.visible = true;
-			}
+			in.dir = rotate(st.hands[1].rot, {0, 0, -1});
 		}
-		st.hitValid = sh.hands && !win;
-		st.hit = st.screenPos + Vec3{0.35f, -0.2f, 0.004f};
+		ui.resetLayout(in);
+		UiFrameOutput uo;
+		ui.update(in, uo, st);
+		ui.update(in, uo, st);
+		st.hitValid = uo.hitValid;
+		st.hit = uo.hit;
+		st.hitRight = uo.hitRight;
+		st.hitUp = uo.hitUp;
+		st.hitRadius = uo.hitRadius;
 		st.clickPulse = 0.3f;
 		// Changement de thème : attendre la tâche de fond
 		for (int i = 0; i < 4000; i++) {
@@ -317,8 +483,10 @@ int main(int argc, char **argv) {
 		glBindVertexArray(qvao);
 		if (Scene::usesQuadLayer(sh.env)) {
 			// Le quad de test mesure 1 x 0,75 : on l'étire à la taille réelle de la vue affichée.
-			Mat4 mvp = multiply(multiply(proj, view), poseMatrix(st.screenPos, st.screenRot, 1.0f));
-			mvp = multiply(mvp, [&] { Mat4 m = identity(); m.m[0] = quadW; m.m[5] = quadH / 0.75f; return m; }());
+			Mat4 stretch = identity();
+			stretch.m[0] = quadW;
+			stretch.m[5] = quadH / 0.75f;
+			Mat4 mvp = multiply(multiply(multiply(proj, view), poseMatrix(st.screenPos, st.screenRot, 1.0f)), stretch);
 			glUniformMatrix4fv(glGetUniformLocation(under, "uMvp"), 1, GL_FALSE, mvp.m);
 			glUniform4f(glGetUniformLocation(under, "uRect"), rect[0], rect[1], rect[2], rect[3]);
 			glUniform1f(glGetUniformLocation(under, "uMode"), 0.0f);
@@ -326,7 +494,7 @@ int main(int argc, char **argv) {
 			glBindTexture(GL_TEXTURE_2D, game);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
-		if (sh.env != kEnvLibrary && !win) {
+		if (sh.env != kEnvLibrary) {
 			Mat4 full = identity();
 			full.m[0] = 2.0f;
 			full.m[5] = 2.0f / 0.75f;

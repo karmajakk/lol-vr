@@ -22,6 +22,8 @@ public:
 	void setRoom(Vec3 pos, float yaw);
 	// ambienceOn : sons d'ambiance de la bibliothèque (coupés en réalité mixte).
 	void setMood(bool ambienceOn, int theme);
+	// Crépitement du feu de cheminée (coupé par défaut ; le reste de l'ambiance n'est pas touché).
+	void setFire(bool on);
 
 	// --- Appelé par le fil audio ---
 	// Traite sur place `frames` trames stéréo 16 bits (le son du jeu déjà mélangé).

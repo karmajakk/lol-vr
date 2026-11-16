@@ -29,7 +29,7 @@ struct Shared {
 	std::atomic<float> listener[3], right[3], fwd[3];
 	std::atomic<float> screen[3], screenRight[3], screenWidth{2.4f};
 	std::atomic<float> roomPos[3], roomYaw{0.0f};
-	std::atomic<int> ambienceOn{0}, theme{0};
+	std::atomic<int> ambienceOn{0}, theme{0}, fireOn{0};
 	Shared() {
 		for (int i = 0; i < 3; i++) {
 			listener[i] = 0.0f;
@@ -63,6 +63,7 @@ struct State {
 	float master = 0.0f;
 	float level[4] = {0, 0, 0, 0}; // vent, gouttes, grillons, grondement (lissés)
 	float firePan[2] = {0.5f, 0.5f}, windowPan[2] = {0.5f, 0.5f};
+	float fireGain = 0.0f;
 	// Feu
 	float fireLp = 0, fireLp2 = 0, crEnv = 0, crDecay = 0.99f, crLp = 0, fireSlow = 0.5f, fireSlowTarget = 0.5f;
 	int fireSlowCount = 0;
@@ -152,6 +153,10 @@ void Ambience::setMood(bool ambienceOn, int theme) {
 	g.theme.store(theme, std::memory_order_relaxed);
 }
 
+void Ambience::setFire(bool on) {
+	g.fireOn.store(on ? 1 : 0, std::memory_order_relaxed);
+}
+
 void Ambience::process(int16_t *samples, size_t frames) {
 	if (frames == 0)
 		return;
@@ -197,6 +202,7 @@ void Ambience::process(int16_t *samples, size_t frames) {
 		st.level[i] += (want[i] - st.level[i]) * slew;
 	float masterStep = ((st.master + (masterTarget - st.master) * slew) - st.master) / (float)frames;
 
+	const float fireTarget = g.fireOn.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
 	float firePanT[2], windowPanT[2];
 	{
 		float yaw = g.roomYaw.load(std::memory_order_relaxed);
@@ -248,7 +254,8 @@ void Ambience::process(int16_t *samples, size_t frames) {
 				st.crLp += aCr * (n - st.crLp);
 				float crackle = (n - st.crLp) * st.crEnv;
 				st.crEnv *= st.crDecay;
-				float fire = st.fireLp2 * 9000.0f * st.fireSlow + crackle * 2100.0f + n * 22.0f;
+				st.fireGain += (fireTarget - st.fireGain) * (3.0f / rate);
+				float fire = (st.fireLp2 * 9000.0f * st.fireSlow + crackle * 2100.0f + n * 22.0f) * st.fireGain;
 				ambL += fire * st.firePan[0];
 				ambR += fire * st.firePan[1];
 			}

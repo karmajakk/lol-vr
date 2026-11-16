@@ -69,10 +69,10 @@ void rosette(MeshBuilder &mb, Vec3 c, float r, Vec3 gem, float gemGlow) {
 
 } // namespace
 
-void buildScreenFrame(MeshBuilder &mb) {
+void buildScreenFrame(MeshBuilder &mb, float aspect) {
 	mb.verts.clear();
 	mb.resetTransform();
-	const float w = 1.0f, h = 0.75f;
+	const float w = 1.0f, h = aspect;
 	// Le bord intérieur part exactement du bord de l'image : aucun pixel du jeu n'est caché.
 	const ProfilePoint prof[] = {{0.000f, -0.002f}, {0.000f, 0.008f}, {0.005f, 0.020f}, {0.014f, 0.030f}, {0.042f, 0.036f},
 	                             {0.064f, 0.052f}, {0.080f, 0.042f}, {0.092f, 0.012f}, {0.092f, -0.022f}};
@@ -181,6 +181,59 @@ void buildCrt(MeshBuilder &body, MeshBuilder &glass) {
 	// Pied pivotant
 	body.cylinder({0, fy0 - 0.07f, -0.42f}, 0.16f, 0.14f, 0.09f, 16, mat(kTexWhite, beigeDark), false, false);
 	body.cylinder({0, fy0 - 0.10f, -0.42f}, 0.34f, 0.32f, 0.035f, 20, plastic, true, true);
+
+	// --- L'ordinateur de bureau (un « 486 » du début des années 90) sous le moniteur ---
+	{
+		const float top = fy0 - 0.10f, ch = 0.36f, cy = top - ch * 0.5f;
+		const float hw = 0.76f, zFront = 0.10f, zBack = -1.06f, zc = (zFront + zBack) * 0.5f, hd = (zFront - zBack) * 0.5f;
+		Material dark = mat(kTexWhite, beigeDark);
+		Material slot = mat(kTexWhite, {0.07f, 0.07f, 0.07f});
+		body.box({0, cy, zc}, {hw, ch * 0.5f, hd}, mat(kTexWhite, beige * 0.98f));
+		// Façade : léger retrait en bas, baies de lecteurs à droite
+		const float zf = zFront;
+		body.box({0, cy - 0.135f, zf + 0.002f}, {hw - 0.01f, 0.035f, 0.004f}, dark, 63 & ~16);
+		// Lecteur 5 pouces 1/4
+		body.box({0.40f, cy + 0.085f, zf + 0.004f}, {0.30f, 0.062f, 0.006f}, mat(kTexWhite, beige * 0.90f), 63 & ~16);
+		body.box({0.40f, cy + 0.092f, zf + 0.011f}, {0.26f, 0.006f, 0.002f}, slot, 63 & ~16);
+		body.box({0.40f, cy + 0.106f, zf + 0.014f}, {0.030f, 0.020f, 0.008f}, dark, 63 & ~16);
+		body.box({0.15f, cy + 0.045f, zf + 0.011f}, {0.010f, 0.006f, 0.002f}, mat(kTexWhite, {0.25f, 0.9f, 0.3f}, 1.0f, 0.5f), 63 & ~16);
+		// Lecteur de disquettes 3 pouces 1/2
+		body.box({0.46f, cy - 0.045f, zf + 0.004f}, {0.24f, 0.045f, 0.006f}, mat(kTexWhite, beige * 0.90f), 63 & ~16);
+		body.box({0.46f, cy - 0.036f, zf + 0.011f}, {0.19f, 0.007f, 0.002f}, slot, 63 & ~16);
+		body.box({0.62f, cy - 0.066f, zf + 0.012f}, {0.030f, 0.010f, 0.005f}, dark, 63 & ~16);
+		body.box({0.27f, cy - 0.066f, zf + 0.011f}, {0.010f, 0.006f, 0.002f}, mat(kTexWhite, {0.25f, 0.9f, 0.3f}, 1.0f, 0.4f), 63 & ~16);
+		// Panneau de commande à gauche : afficheur de vitesse, turbo, reset, serrure, marche
+		body.box({-0.44f, cy + 0.045f, zf + 0.004f}, {0.25f, 0.10f, 0.005f}, mat(kTexWhite, beige * 0.92f), 63 & ~16);
+		body.box({-0.56f, cy + 0.085f, zf + 0.010f}, {0.085f, 0.038f, 0.003f}, mat(kTexWhite, {0.05f, 0.02f, 0.02f}), 63 & ~16);
+		// Chiffres « 66 » en segments rouges
+		Material seg = mat(kTexWhite, {1.0f, 0.16f, 0.08f}, 1.0f, 1.0f);
+		for (float dx : {-0.036f, 0.036f}) {
+			float x0 = -0.56f + dx;
+			body.box({x0, cy + 0.111f, zf + 0.014f}, {0.020f, 0.004f, 0.001f}, seg, 32);
+			body.box({x0, cy + 0.085f, zf + 0.014f}, {0.020f, 0.004f, 0.001f}, seg, 32);
+			body.box({x0, cy + 0.059f, zf + 0.014f}, {0.020f, 0.004f, 0.001f}, seg, 32);
+			body.box({x0 - 0.020f, cy + 0.098f, zf + 0.014f}, {0.004f, 0.013f, 0.001f}, seg, 32);
+			body.box({x0 - 0.020f, cy + 0.072f, zf + 0.014f}, {0.004f, 0.013f, 0.001f}, seg, 32);
+			body.box({x0 + 0.020f, cy + 0.072f, zf + 0.014f}, {0.004f, 0.013f, 0.001f}, seg, 32);
+		}
+		body.box({-0.40f, cy + 0.100f, zf + 0.012f}, {0.035f, 0.014f, 0.006f}, dark, 63 & ~16);  // turbo
+		body.box({-0.40f, cy + 0.062f, zf + 0.012f}, {0.035f, 0.014f, 0.006f}, dark, 63 & ~16);  // reset
+		body.box({-0.31f, cy + 0.100f, zf + 0.011f}, {0.008f, 0.006f, 0.002f}, mat(kTexWhite, {0.25f, 0.9f, 0.3f}, 1.0f, 1.0f), 63 & ~16);
+		body.box({-0.31f, cy + 0.062f, zf + 0.011f}, {0.008f, 0.006f, 0.002f}, mat(kTexWhite, {1.0f, 0.55f, 0.1f}, 1.0f, 0.6f), 63 & ~16);
+		Mat4 saved = body.xf;
+		body.setTransform(multiply(saved, poseMatrix({-0.25f, cy + 0.000f, zf + 0.004f}, quatAxisAngle({1, 0, 0}, kPi * 0.5f))));
+		body.cylinder({0, 0, 0}, 0.024f, 0.022f, 0.012f, 12, mat(kTexMetal, {0.75f, 0.75f, 0.78f}, 6.0f), true, false); // serrure
+		body.setTransform(saved);
+		body.box({-0.25f, cy, zf + 0.018f}, {0.004f, 0.012f, 0.002f}, slot, 63 & ~16);
+		body.box({-0.60f, cy - 0.010f, zf + 0.013f}, {0.050f, 0.026f, 0.008f}, mat(kTexWhite, beige * 1.04f), 63 & ~16); // marche/arrêt
+		// Ouïes d'aération
+		for (int i = 0; i < 5; i++)
+			body.box({-0.42f, cy - 0.075f - 0.012f * (float)i, zf + 0.003f}, {0.22f, 0.003f, 0.001f}, slot, 32);
+		// Pieds
+		for (float sx : {-1.0f, 1.0f})
+			for (float z : {zFront - 0.10f, zBack + 0.10f})
+				body.box({sx * (hw - 0.10f), cy - ch * 0.5f - 0.008f, z}, {0.05f, 0.008f, 0.05f}, slot);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -246,16 +299,6 @@ Vec3 gloveFingertip(bool leftHand, float trigger) {
 	Vec3 joints[4];
 	fingerJoints(0, trigger, 0.0f, joints);
 	return handToAim(joints[3], leftHand);
-}
-
-void wristPanelFrame(bool leftHand, Vec3 &center, Vec3 &right, Vec3 &up, Vec3 &normal) {
-	// Même axe que la manchette du gant (repère de la main droite).
-	const Vec3 w0{0.0f, -0.004f, 0.040f};
-	const Vec3 dir = normalize(Vec3{0.0f, -0.36f, 1.0f});
-	center = handToAim(w0 + dir * 0.150f + Vec3{0.070f, 0, 0}, leftHand);
-	normal = {leftHand ? -1.0f : 1.0f, 0, 0};
-	right = dir * -1.0f; // du coude vers la main
-	up = cross(normal, right);
 }
 
 void buildGlove(MeshBuilder &out, bool leftHand, float trigger, float grip) {

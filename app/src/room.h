@@ -46,12 +46,20 @@ struct RoomInfo {
 	float windowWidth = 0, windowHeight = 0;
 };
 
-// Construit la pièce. `solid` reçoit la géométrie opaque, `alpha` les parties translucides (vitrail).
-void buildRoom(MeshBuilder &solid, MeshBuilder &alpha, RoomInfo &info, int theme);
+// Images fournies par le joueur (fenêtre, portrait au-dessus de la cheminée).
+struct RoomOptions {
+	bool windowImage = false;
+	float windowAspect = 1.6f; // largeur / hauteur
+	bool portraitImage = false;
+	float portraitAspect = 1.5f;
+};
 
-// Cadre ouvragé autour de l'écran. Repère de l'écran : image de largeur 1 et de hauteur 0,75
-// centrée dans le plan z = 0, regardant vers +z.
-void buildScreenFrame(MeshBuilder &mb);
+// Construit la pièce. `solid` reçoit la géométrie opaque, `alpha` les parties translucides (vitrail).
+void buildRoom(MeshBuilder &solid, MeshBuilder &alpha, RoomInfo &info, int theme, const RoomOptions &options);
+
+// Cadre ouvragé autour de l'écran. Repère de l'écran : image de largeur 1 et de hauteur `aspect`
+// (0,75 pour l'image entière) centrée dans le plan z = 0, regardant vers +z.
+void buildScreenFrame(MeshBuilder &mb, float aspect = 0.75f);
 
 // Moniteur cathodique des années 90 (même repère). `glass` reçoit la dalle bombée ; ses uv
 // (0..1) désignent l'image du jeu.
@@ -67,9 +75,7 @@ void buildGlove(MeshBuilder &mb, bool leftHand, float trigger, float grip);
 // Bout de l'index tendu (repère de visée), pour faire partir le pointeur du doigt.
 Vec3 gloveFingertip(bool leftHand, float trigger);
 
-// Bracelet d'inventaire (à l'essai) : bandeau posé sur l'avant-bras, côté dos de la main.
-// Donne son centre et ses axes dans le repère de visée de la manette.
-const float kWristPanelWidth = 0.30f;
-void wristPanelFrame(bool leftHand, Vec3 &center, Vec3 &right, Vec3 &up, Vec3 &normal);
+// Bas du moniteur cathodique et de l'ordinateur posé dessous (repère de l'écran, largeur 1).
+const float kCrtBottomY = -1.02f;
 
 } // namespace lolvr

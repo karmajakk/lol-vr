@@ -82,7 +82,7 @@ cp "$LIBRETRO_H" "$PREBUILT/include/"
 # Compilation à blanc (sans édition de liens) : détecte les erreurs en quelques secondes,
 # avant la longue compilation de ScummVM.
 CLANG="$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/clang++ | head -1)"
-for src in main_xr.cpp core_host.cpp scene.cpp room.cpp props.cpp mesh.cpp proctex.cpp ambience.cpp; do
+for src in main_xr.cpp core_host.cpp scene.cpp room.cpp props.cpp mesh.cpp proctex.cpp ambience.cpp ui.cpp; do
 	"$CLANG" --target=aarch64-linux-android29 -std=c++17 -fsyntax-only -Wall -Wextra -Wno-missing-field-initializers \
 		-I"$PREBUILT/include" -I"$NDK/sources/android/native_app_glue" "$ROOT/app/src/$src"
 done

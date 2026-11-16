@@ -1,0 +1,106 @@
+// lol-vr — interface détachée : panneaux flottants (groupe, inventaire, sorts, commandes,
+// boussole, atlas), clavier avec options, poignées pour tout déplacer, et calcul du pointeur.
+// Indépendant de la plateforme (OpenGL ES 3 pour la texture du clavier seulement).
+#pragma once
+
+#include "scene.h"
+
+namespace lolvr {
+
+enum UiPanelId {
+	kPanelParty = 0, // messages + portraits des personnages
+	kPanelInventory, // rangée d'objets
+	kPanelSpells,    // colonne de gauche : parchemin des sorts
+	kPanelControls,  // flèches de déplacement, options, repos
+	kPanelCompass,   // colonne de droite : boussole, atlas, lampe, bourse
+	kPanelAtlas,     // dernière carte consultée
+	kPanelKeyboard,  // clavier et options
+	kUiPanelCount
+};
+
+// Position d'un panneau autour du joueur : direction (lacet, tangage) et distance depuis le
+// point d'ancrage (la tête au dernier recentrage), taille en mètres par pixel de l'image.
+struct UiPlacement {
+	float yaw = 0.0f, pitch = 0.0f, dist = 1.0f, scale = 0.002f;
+};
+
+enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionResetLayout, kUiActionCloseKeyboard };
+
+const unsigned kUiModShift = 1;
+
+struct UiFrameInput {
+	float dt = 0.016f;
+	// Ancrage
+	Vec3 anchorPos = {0, 0, 0};
+	float anchorYaw = 0.0f;
+	// Pointeur (main active)
+	bool aimValid = false;
+	Vec3 tip = {0, 0, 0}, dir = {0, 0, -1};
+	bool triggerDown = false, triggerPressed = false;
+	float stickX = 0.0f, stickY = 0.0f; // joystick droit
+	// Écran principal : pose, taille affichée, portion de l'image du jeu (pixels 320x200)
+	Vec3 screenPos = {0, 0, -2.2f};
+	Quat screenRot = {0, 0, 0, 1};
+	float dispW = 2.4f, dispH = 1.8f;
+	float cropX = 0, cropY = 0, cropW = 320, cropH = 200;
+	bool crt = false;
+	// État du jeu
+	bool split = false;       // l'interface détachée est affichée
+	bool atlasVisible = false; // le panneau de l'atlas a une carte à montrer
+	bool atlasLive = false;    // la carte est ouverte dans le jeu : le panneau est cliquable
+	unsigned atlasTexture = 0;
+	int atlasW = 320, atlasH = 200;
+	bool keyboardOpen = false;
+};
+
+struct UiFrameOutput {
+	// Pointeur de la souris du jeu
+	bool pointerValid = false;
+	float gu = 0, gv = 0; // 0..1 dans l'image du jeu
+	bool buttonsToGame = false; // les clics de cette image vont au jeu
+	// Lueur du pointeur
+	bool hitValid = false;
+	Vec3 hit = {0, 0, 0}, hitRight = {0, 0, 0}, hitUp = {0, 0, 0};
+	float hitRadius = 0.0f;
+	// Déplacement à la poignée
+	bool dragging = false;        // un panneau ou l'écran est tenu (le joystick droit le règle)
+	bool screenDragging = false;  // … et c'est l'écran principal
+	Vec3 screenCenter = {0, 0, 0}; // où le joueur veut l'écran
+	float screenZoom = 1.0f;      // facteur à appliquer à sa taille
+	bool layoutChanged = false;   // à mémoriser
+	bool grabbed = false, released = false; // retours haptiques
+	// Clavier
+	int keyCount = 0;
+	unsigned keys[4] = {0, 0, 0, 0}, keyMods[4] = {0, 0, 0, 0};
+	int action = kUiActionNone;
+	bool clicked = false;
+};
+
+class Ui {
+public:
+	Ui();
+	~Ui();
+
+	// À appeler une fois, contexte OpenGL actif.
+	void initGl(bool srgb);
+	// Étiquettes des boutons d'options.
+	void setOptions(bool fireOn, bool detached);
+	// Disposition par défaut, autour de l'écran tel qu'il est placé.
+	void resetLayout(const UiFrameInput &in);
+	bool hasLayout() const { return placed; }
+	void setHasLayout(bool v) { placed = v; }
+
+	// Une fois par image : calcule le pointeur, gère les poignées et le clavier, et remplit
+	// les panneaux et poignées de la scène.
+	void update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene);
+
+	UiPlacement placement[kUiPanelCount];
+	static const char *panelKey(int id);
+
+private:
+	struct Impl;
+	Impl *d;
+	bool placed = false;
+};
+
+} // namespace lolvr

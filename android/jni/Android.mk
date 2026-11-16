@@ -17,7 +17,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := lolvr
 LOCAL_SRC_FILES := ../../app/src/main_xr.cpp ../../app/src/core_host.cpp \
 	../../app/src/scene.cpp ../../app/src/room.cpp ../../app/src/props.cpp ../../app/src/mesh.cpp \
-	../../app/src/proctex.cpp ../../app/src/ambience.cpp
+	../../app/src/proctex.cpp ../../app/src/ambience.cpp ../../app/src/ui.cpp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/prebuilt/include
 LOCAL_CPPFLAGS := -std=c++17 -O2 -Wall -Wextra -Wno-missing-field-initializers
 LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv3 -laaudio

@@ -1,5 +1,5 @@
 diff --git a/engines/kyra/engine/lol.cpp b/engines/kyra/engine/lol.cpp
-index 9094a563..cc98fb65 100644
+index 9094a563..04f1a6ae 100644
 --- a/engines/kyra/engine/lol.cpp
 +++ b/engines/kyra/engine/lol.cpp
 @@ -39,6 +39,14 @@
@@ -53,8 +53,24 @@ index 9094a563..cc98fb65 100644
  		if (c->hitPointsCur <= 0) {
  			characterHitpointsZero(target, flags);
  		} else {
+@@ -4101,6 +4124,7 @@ uint16 LoLEngine::getNearestPartyMemberFromPos(int x, int y) {
+ // magic atlas
+ 
+ void LoLEngine::displayAutomap() {
++	g_lolvrState.reserved[2] |= 1; // lol-vr: the automap covers the whole screen
+ 	snd_playSoundEffect(105, -1);
+ 	gui_toggleButtonDisplayMode(_flags.isTalkie ? 78 : 76, 1);
+ 
+@@ -4193,6 +4217,7 @@ void LoLEngine::displayAutomap() {
+ 	addLevelItems();
+ 	gui_notifyButtonListChanged();
+ 	enableSysTimer(2);
++	g_lolvrState.reserved[2] &= ~1; // lol-vr
+ }
+ 
+ void LoLEngine::updateAutoMap(uint16 block) {
 diff --git a/engines/kyra/engine/lol.h b/engines/kyra/engine/lol.h
-index 2cfadf37..c0082dc8 100644
+index 2cfadf37..a9028a26 100644
 --- a/engines/kyra/engine/lol.h
 +++ b/engines/kyra/engine/lol.h
 @@ -32,6 +32,26 @@
@@ -76,7 +92,7 @@ index 2cfadf37..c0082dc8 100644
 +	uint32 hitSerial;   // incremented each time the party damages a monster
 +	int32 hitDamage;
 +	char sfxName[16];   // sound file of the last effect, e.g. "DOORMTOP" (empty if none)
-+	int32 reserved[4];
++	int32 reserved[4];  // [0] dungeon loop ticks, [1] control mode, [2] bit 0: automap open, bit 1: game menu open
 +};
 +extern LolvrGameState g_lolvrState;
 +}
@@ -106,6 +122,34 @@ index 532afdf4..210b4828 100644
  		if (palFile)
  			_lastOverridePalFile = palFile;
  		else
+diff --git a/engines/kyra/gui/gui_lol.cpp b/engines/kyra/gui/gui_lol.cpp
+index 926e60dc..b2732d26 100644
+--- a/engines/kyra/gui/gui_lol.cpp
++++ b/engines/kyra/gui/gui_lol.cpp
+@@ -2209,6 +2209,11 @@ int GUI_LoL::redrawShadedButtonCallback(Button *button) {
+ }
+ 
+ int GUI_LoL::runMenu(Menu &menu) {
++	// lol-vr: a game menu covers the middle of the screen while this function runs
++	struct LolvrMenuFlag {
++		LolvrMenuFlag() { g_lolvrState.reserved[2] |= 2; }
++		~LolvrMenuFlag() { g_lolvrState.reserved[2] &= ~2; }
++	} lolvrMenuFlag;
+ 	_currentMenu = &menu;
+ 	_lastMenu = _currentMenu;
+ 	_newMenu = 0;
+diff --git a/engines/kyra/sequence/sequences_lol.cpp b/engines/kyra/sequence/sequences_lol.cpp
+index 4a8863e2..466b6995 100644
+--- a/engines/kyra/sequence/sequences_lol.cpp
++++ b/engines/kyra/sequence/sequences_lol.cpp
+@@ -1106,6 +1106,7 @@ void LoLEngine::setupEpilogueData(bool load) {
+ }
+ 
+ void LoLEngine::showOutro(int character, bool maxDifficulty) {
++	g_lolvrState.level = 0; // lol-vr: back to a plain full-screen picture for the ending
+ 	setupEpilogueData(true);
+ 	TIMInterpreter *timBackUp = _tim;
+ 	_tim = new TIMInterpreter(this, _screen, _system);
 diff --git a/engines/kyra/sound/sound_lol.cpp b/engines/kyra/sound/sound_lol.cpp
 index cd9eee50..cfbc8100 100644
 --- a/engines/kyra/sound/sound_lol.cpp

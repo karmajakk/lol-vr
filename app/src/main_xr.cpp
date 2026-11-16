@@ -45,7 +45,20 @@
 #include "proctex.h"
 #include "room.h"
 #include "scene.h"
+#include "ui.h"
 #include "vecmath.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
+#define STBI_NO_STDIO
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wsign-compare"
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#include "third_party/stb_image.h"
+#pragma clang diagnostic pop
 
 #define LOG_TAG "lolvr"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -346,7 +359,6 @@ struct Button {
 
 // Image du jeu dans son calque : 1600x1200 au centre, plus une marge noire.
 const int kQuadImageW = 1600, kQuadImageH = 1200, kQuadMarginX = 16, kQuadMarginY = 12;
-const float kQuadScale = (float)(kQuadImageW + 2 * kQuadMarginX) / (float)kQuadImageW;
 
 // Extension GL_EXT_multisampled_render_to_texture (anticrénelage sans copie, standard sur Quest).
 typedef void(GL_APIENTRY *RenderbufferStorageMultisampleFn)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
@@ -429,20 +441,35 @@ struct App {
 	bool screenPlaced = false;
 	Vec3 screenPos = {0, 0, -2.2f};
 	float screenYaw = 0.0f;
-	float widths[kEnvCount] = {2.4f, 1.8f, 0.62f, 2.0f}; // mètres ; hauteur = largeur * 3/4 (fenêtre : largeur de la vue du donjon)
-	float distances[kEnvCount] = {2.2f, 2.0f, 0.95f, 1.4f};
-
-	// Mode fenêtre : la vue du donjon seule, en grand, pendant que l'on explore.
-	bool inDungeon = false;         // la boucle du donjon tourne et aucun écran de personnage n'est ouvert
-	uint32_t loopSerial = 0;
-	double loopChangedAt = -10.0, dungeonSince = 0;
-	float windowMix = 0.0f;         // 0 = image entière, 1 = vue du donjon seule
-	// Ce que le calque affiche en ce moment : portion de l'image du jeu (pixels) et taille réelle (mètres).
+	float widths[kEnvCount] = {2.4f, 1.8f, 0.62f}; // mètres : largeur de l'image entière (hauteur = 3/4)
+	float distances[kEnvCount] = {2.2f, 2.0f, 0.95f};
+	// Ce que l'écran affiche en ce moment : portion de l'image du jeu (pixels) et taille réelle (mètres).
 	float cropX = 0, cropY = 0, cropW = 320, cropH = 200;
 	float dispW = 2.4f, dispH = 1.8f;
 	int quadRectW = 0, quadRectH = 0; // zone du calque quad réellement utilisée
-	Vec3 panelCenter[2];             // [0] = barre du poignet, [1] = tablette
-	SceneState::Panel panels[2];
+	float quadScaleX = 1.0f, quadScaleY = 1.0f; // marge noire comprise
+
+	// Interface détachée : l'écran ne garde que la vue du donjon, le reste part sur des panneaux.
+	lolvr::Ui ui;
+	bool detached = true;        // choix du joueur
+	bool split = false;          // en vigueur en ce moment
+	bool splitWanted = false;
+	double splitWantedSince = 0;
+	bool gameStarted = false, automapOpen = false;
+	bool keyboardOpen = false, keyboardButtonDown = false;
+	bool fireOn = false;
+	bool layoutLoaded = false;
+	// Atlas : copie de la dernière carte consultée
+	GLuint atlasTex = 0;
+	bool atlasReady = false;
+	double automapSince = 0;
+	// Touches du clavier virtuel à relâcher
+	struct PendingKey {
+		unsigned key, mods;
+		double releaseAt;
+	};
+	std::vector<PendingKey> pendingKeys;
+	float anchorYaw = 0.0f; // orientation de la pièce et des panneaux (regard au dernier recentrage)
 	Vec3 anchorPos = {0, 0, 0}; // tête du joueur au moment du placement
 	Vec3 anchorDir = {0, 0, -1}; // direction tête -> écran
 	Vec3 roomPos = {0, -1.25f, 0};
@@ -472,7 +499,8 @@ struct App {
 	bool settingsDirty = false;
 
 	// Jeu
-	std::string systemDir, saveDir, gameRoot, gameDir, settingsPath;
+	std::string systemDir, saveDir, gameRoot, gameDir, settingsPath, decorDir;
+	bool imagesLoaded = false;
 	bool coreStarted = false;
 	double nextScan = 0;
 	Frame frame;
@@ -847,6 +875,7 @@ bool initGl(App &app) {
 	createEyeDepth(app);
 
 	app.sceneOk = app.scene.init(app.srgb);
+	app.ui.initGl(app.srgb);
 	return app.sceneOk;
 }
 
@@ -967,25 +996,55 @@ struct Limits {
 	float wMin, wMax, dMin, dMax;
 };
 // Dans la bibliothèque, l'écran doit tenir entre les étagères et devant le mur du fond.
-const Limits kLimits[kEnvCount] = {{1.2f, 3.0f, 1.5f, 2.9f}, {0.5f, 5.0f, 0.5f, 5.0f}, {0.25f, 2.0f, 0.35f, 3.0f}, {0.8f, 4.0f, 0.6f, 3.0f}};
+const Limits kLimits[kEnvCount] = {{1.0f, 3.0f, 1.2f, 2.9f}, {0.4f, 5.0f, 0.4f, 5.0f}, {0.25f, 2.0f, 0.35f, 3.0f}};
 
+// Fichier de réglages : une ligne par réglage, « nom valeurs… ». Les lignes inconnues sont ignorées.
 void loadSettings(App &app, int &environment) {
 	FILE *f = fopen(app.settingsPath.c_str(), "r");
 	if (!f)
 		return;
-	int env = 0;
-	if (fscanf(f, " decor %d", &env) == 1 && env >= 0 && env < kEnvCount)
-		environment = env;
-	for (int i = 0; i < kEnvCount; i++) {
-		float w = 0, d = 0;
-		if (fscanf(f, " ecran %f %f", &w, &d) != 2)
-			break;
-		if (w >= kLimits[i].wMin && w <= kLimits[i].wMax)
-			app.widths[i] = w;
-		if (d >= kLimits[i].dMin && d <= kLimits[i].dMax)
-			app.distances[i] = d;
+	char line[256];
+	int screenIndex = 0;
+	while (fgets(line, sizeof(line), f)) {
+		char name[32] = {0};
+		int used = 0;
+		if (sscanf(line, " %31s %n", name, &used) < 1)
+			continue;
+		const char *rest = line + used;
+		int iv = 0;
+		if (!strcmp(name, "decor")) {
+			if (sscanf(rest, "%d", &iv) == 1 && iv >= 0 && iv < kEnvCount)
+				environment = iv;
+		} else if (!strcmp(name, "ecran")) {
+			float w = 0, d = 0;
+			if (screenIndex < kEnvCount && sscanf(rest, "%f %f", &w, &d) == 2) {
+				if (w >= kLimits[screenIndex].wMin && w <= kLimits[screenIndex].wMax)
+					app.widths[screenIndex] = w;
+				if (d >= kLimits[screenIndex].dMin && d <= kLimits[screenIndex].dMax)
+					app.distances[screenIndex] = d;
+			}
+			screenIndex++;
+		} else if (!strcmp(name, "feu")) {
+			if (sscanf(rest, "%d", &iv) == 1)
+				app.fireOn = iv != 0;
+		} else if (!strcmp(name, "panneaux")) {
+			if (sscanf(rest, "%d", &iv) == 1)
+				app.detached = iv != 0;
+		} else if (!strcmp(name, "panneau")) {
+			char key[32] = {0};
+			float yaw = 0, pitch = 0, dist = 0, scale = 0;
+			if (sscanf(rest, "%31s %f %f %f %f", key, &yaw, &pitch, &dist, &scale) == 5)
+				for (int i = 0; i < lolvr::kUiPanelCount; i++)
+					if (!strcmp(key, lolvr::Ui::panelKey(i)) && dist >= 0.2f && dist <= 6.0f && scale >= 0.0005f && scale <= 0.02f &&
+					    fabsf(yaw) <= 3.2f && fabsf(pitch) <= 1.4f) {
+						app.ui.placement[i] = {yaw, pitch, dist, scale};
+						app.layoutLoaded = true;
+					}
+		}
 	}
 	fclose(f);
+	if (app.layoutLoaded)
+		app.ui.setHasLayout(true);
 }
 
 void saveSettings(App &app) {
@@ -996,6 +1055,13 @@ void saveSettings(App &app) {
 	fprintf(f, "decor %d\n", app.environment);
 	for (int i = 0; i < kEnvCount; i++)
 		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
+	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
+	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
+	if (app.ui.hasLayout())
+		for (int i = 0; i < lolvr::kUiPanelCount; i++) {
+			const lolvr::UiPlacement &pl = app.ui.placement[i];
+			fprintf(f, "panneau %s %.4f %.4f %.4f %.5f\n", lolvr::Ui::panelKey(i), pl.yaw, pl.pitch, pl.dist, pl.scale);
+		}
 	fclose(f);
 }
 
@@ -1037,9 +1103,12 @@ void placeScreen(App &app, bool newAnchor) {
 		float yaw = atan2f(-fwd.x, -fwd.z);
 		Vec3 flat = rotate(quatYaw(yaw), {0, 0, -1});
 		app.screenYaw = yaw;
+		app.anchorYaw = yaw;
 		app.anchorPos = app.headPos;
 		if (library) {
-			app.anchorDir = flat;
+			// Un peu au-dessus de la ligne des yeux : la table et les panneaux se logent dessous.
+			float d = screenDistance(app);
+			app.anchorDir = normalize(flat * d + Vec3{0, 0.05f, 0});
 		} else {
 			// En réalité mixte, l'écran se pose là où l'on regarde (sur un bureau, par exemple).
 			float pitch = clampf(asinf(clampf(fwd.y, -1.0f, 1.0f)), -0.6f, 0.45f);
@@ -1047,17 +1116,40 @@ void placeScreen(App &app, bool newAnchor) {
 		}
 		app.roomPos = {app.headPos.x, app.floorY, app.headPos.z};
 	}
-	float w = screenWidth(app);
 	Vec3 pos = app.anchorPos + app.anchorDir * screenDistance(app);
 	if (library) {
-		// Juste sous la ligne des yeux, sans jamais toucher le plancher.
-		pos.y = app.anchorPos.y - 0.05f;
-		float minY = app.floorY + 0.375f * w * 1.2f + 0.12f;
-		if (pos.y < minY)
-			pos.y = minY;
+		// Sans jamais toucher le plancher ni le plafond.
+		float half = 0.375f * screenWidth(app) * 1.2f + 0.12f;
+		pos.y = clampf(pos.y, app.floorY + half, fmaxf(app.floorY + half, app.floorY + lolvr::kRoomHeight - half));
 	}
 	app.screenPos = pos;
 	app.screenPlaced = true;
+}
+
+// Le joueur tient la poignée de l'écran : il le pose où il veut (et le joystick le rapproche ou l'agrandit).
+void dragScreen(App &app, Vec3 center, float zoom) {
+	const Limits &lim = kLimits[app.environment];
+	Vec3 v = center - app.anchorPos;
+	float dist = length(v);
+	if (dist < 1e-3f)
+		return;
+	Vec3 dir = v * (1.0f / dist);
+	if (app.environment == lolvr::kEnvLibrary) {
+		// Dans la bibliothèque, l'écran reste devant le mur du fond.
+		float yaw = atan2f(-dir.x, -dir.z) - app.anchorYaw;
+		while (yaw > 3.14159265f) yaw -= 6.2831853f;
+		while (yaw < -3.14159265f) yaw += 6.2831853f;
+		yaw = clampf(yaw, -0.45f, 0.45f);
+		float pitch = clampf(asinf(clampf(dir.y, -1.0f, 1.0f)), -0.35f, 0.45f);
+		Vec3 flat = rotate(quatYaw(app.anchorYaw + yaw), {0, 0, -1});
+		dir = flat * cosf(pitch) + Vec3{0, sinf(pitch), 0};
+	}
+	app.anchorDir = dir;
+	screenDistance(app) = clampf(dist, lim.dMin, lim.dMax);
+	screenWidth(app) = clampf(screenWidth(app) * zoom, lim.wMin, lim.wMax);
+	// L'écran reste tourné vers le joueur.
+	app.screenYaw = atan2f(-dir.x, -dir.z);
+	placeScreen(app, false);
 }
 
 bool usesPassthrough(int env) { return env == lolvr::kEnvPassthroughFrame || env == lolvr::kEnvPassthroughCrt; }
@@ -1080,7 +1172,6 @@ void setEnvironment(App &app, int env, XrTime time) {
 	setPassthrough(app, usesPassthrough(env));
 	if (usesPassthrough(env) && !app.passthroughActive)
 		env = lolvr::kEnvLibrary;
-	app.windowMix = 0.0f;
 	app.environment = env;
 	LOGI("décor : %d", env);
 	if (app.headValid) {
@@ -1136,19 +1227,23 @@ int classifySfx(const char *name) {
 void updateGameEvents(App &app, double now) {
 	lolvr::GameState gs;
 	if (!app.coreStarted || !CoreHost::get().gameState(gs)) {
-		app.inDungeon = false;
+		app.splitWanted = false;
+		app.gameStarted = false;
+		app.automapOpen = false;
 		return;
 	}
 
-	// Vue du donjon active : la boucle du jeu tourne et aucun écran de personnage n'est ouvert.
-	if (gs.loopSerial != app.loopSerial) {
-		app.loopSerial = gs.loopSerial;
-		app.loopChangedAt = now;
+	// L'interface se détache quand la partie est en cours et que l'écran a sa disposition
+	// habituelle : pas de scène sur toute la largeur, pas de carte ni de menu ouverts.
+	app.gameStarted = gs.level > 0;
+	if (gs.automapOpen && !app.automapOpen)
+		app.automapSince = now;
+	app.automapOpen = gs.automapOpen;
+	bool wanted = app.gameStarted && gs.controlMode == 0 && !gs.automapOpen && !gs.menuOpen;
+	if (wanted != app.splitWanted) {
+		app.splitWanted = wanted;
+		app.splitWantedSince = now;
 	}
-	bool dungeon = gs.level > 0 && gs.controlMode == 0 && now - app.loopChangedAt < 0.7;
-	if (dungeon && !app.inDungeon)
-		app.dungeonSince = now;
-	app.inDungeon = dungeon;
 
 	// Le décor change une fois la nouvelle zone bien installée (pas pendant un chargement).
 	int theme = lolvr::themeFromGame(gs.tileset, gs.level);
@@ -1211,90 +1306,147 @@ void updateGameEvents(App &app, double now) {
 }
 
 // ---------------------------------------------------------------------------
-// Mode fenêtre : vue du donjon seule + interface sur le poignet
+// Ce que montre l'écran principal : l'image entière, ou la vue du donjon seule
 
-// Calcule ce que le calque affiche (portion de l'image, taille réelle) en fondu entre l'image
-// entière et la vue du donjon seule.
-void updateWindowView(App &app, double now, float dt) {
-	const float kWinX = 112, kWinY = 0, kWinW = 176, kWinH = 120; // vue du donjon dans l'image 320x200
-	float ww = screenWidth(app);
-	if (app.environment != lolvr::kEnvWindow) {
-		app.windowMix = 0.0f;
+void updateLayout(App &app, double now) {
+	const float kViewX = 112, kViewY = 0, kViewW = 176, kViewH = 120; // vue du donjon dans l'image 320x200
+	// On attend que l'état soit stable un court instant, pour ne pas clignoter pendant une transition.
+	bool allowed = app.detached && app.environment != lolvr::kEnvPassthroughCrt;
+	if (!allowed)
+		app.split = false;
+	else if (app.splitWanted != app.split && now - app.splitWantedSince > (app.splitWanted ? 0.35 : 0.05))
+		app.split = app.splitWanted;
+	float w = screenWidth(app);
+	if (app.split) {
+		// Même hauteur que l'image entière : seul le format change (pixels 1,2 fois plus hauts que larges).
+		app.cropX = kViewX; app.cropY = kViewY; app.cropW = kViewW; app.cropH = kViewH;
+		app.dispH = w * 0.75f;
+		app.dispW = app.dispH * kViewW / (kViewH * 1.2f);
+	} else {
 		app.cropX = 0; app.cropY = 0; app.cropW = 320; app.cropH = 200;
-		app.dispW = ww;
-		app.dispH = ww * 0.75f;
-		return;
+		app.dispW = w;
+		app.dispH = w * 0.75f;
 	}
-	float target = (app.inDungeon && now - app.dungeonSince > 0.3) ? 1.0f : 0.0f;
-	float step = dt * 2.5f;
-	app.windowMix += clampf(target - app.windowMix, -step, step);
-	float m = app.windowMix * app.windowMix * (3.0f - 2.0f * app.windowMix);
-	app.cropX = kWinX * m;
-	app.cropY = kWinY * m;
-	app.cropW = 320.0f + (kWinW - 320.0f) * m;
-	app.cropH = 200.0f + (kWinH - 200.0f) * m;
-	// Même finesse d'image des deux côtés : la vue du donjon a la largeur choisie, l'image entière 1,3 fois plus.
-	float scaleWin = ww / kWinW, scaleFull = ww * 1.3f / 320.0f;
-	float scale = scaleFull + (scaleWin - scaleFull) * m;
-	app.dispW = app.cropW * scale;
-	app.dispH = app.cropH * 1.2f * scale; // les pixels du jeu sont 1,2 fois plus hauts que larges
 }
 
-// Panneaux d'interface sur la main qui ne vise pas : barre (portraits + objets) sur l'avant-bras,
-// et tablette (image entière) qui apparaît quand on approche la main du visage.
-void updatePanels(App &app) {
-	for (int i = 0; i < 2; i++)
-		app.panels[i].visible = false;
-	if (app.environment != lolvr::kEnvWindow || app.windowMix < 0.6f)
-		return;
-	int np = 1 - app.activeHand;
-	if (!app.aimValid[np] || !app.headValid)
-		return;
-	Quat hr = toQuat(app.aimPose[np].orientation);
-	Vec3 hp = toVec3(app.aimPose[np].position);
+// Images du joueur pour le décor : dossier « decor » à côté du dossier du jeu.
+bool loadDecorImage(App &app, int slot, const char *baseName) {
+	static const char *exts[] = {".png", ".jpg", ".jpeg", ".PNG", ".JPG"};
+	for (const char *ext : exts) {
+		std::string path = app.decorDir + "/" + baseName + ext;
+		FILE *f = fopen(path.c_str(), "rb");
+		if (!f)
+			continue;
+		std::vector<unsigned char> data;
+		unsigned char buf[65536];
+		size_t n;
+		while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && data.size() < (64u << 20))
+			data.insert(data.end(), buf, buf + n);
+		fclose(f);
+		int w = 0, h = 0, comp = 0;
+		unsigned char *px = stbi_load_from_memory(data.data(), (int)data.size(), &w, &h, &comp, 4);
+		if (!px) {
+			LOGW("image illisible : %s", path.c_str());
+			continue;
+		}
+		app.scene.setImage(slot, px, w, h);
+		stbi_image_free(px);
+		LOGI("image du décor : %s (%d x %d)", path.c_str(), w, h);
+		return true;
+	}
+	return false;
+}
 
-	// Barre : bas de l'image (portraits, barres de vie, objets)
-	{
-		SceneState::Panel &p = app.panels[0];
-		Vec3 c, r, u, n;
-		lolvr::wristPanelFrame(np == kLeft, c, r, u, n);
-		if (np != kLeft) {
-			r = r * -1.0f;
-			u = u * -1.0f;
-		}
-		p.center = hp + rotate(hr, c);
-		p.right = rotate(hr, r);
-		p.up = rotate(hr, u);
-		p.halfW = 0.125f;
-		p.halfH = p.halfW * (58.0f / 234.0f) * 1.2f;
-		p.u0 = 84.0f / 320.0f; p.u1 = 318.0f / 320.0f;
-		p.v0 = 141.0f / 200.0f; p.v1 = 199.5f / 200.0f;
-		p.alpha = 1.0f;
-		p.visible = true;
-	}
-	// Tablette : l'image entière, devant la main, tournée vers le visage
-	{
-		SceneState::Panel &p = app.panels[1];
-		Vec3 toHead = app.headPos - hp;
-		float dist = length(toHead);
-		Vec3 fwd = rotate(app.headRot, {0, 0, -1});
-		Vec3 dirToHand = dist > 1e-3f ? toHead * (-1.0f / dist) : fwd;
-		float inFront = dot(dirToHand, fwd);
-		float a = clampf((0.60f - dist) / 0.20f, 0.0f, 1.0f) * clampf((inFront - 0.35f) / 0.2f, 0.0f, 1.0f);
-		if (a > 0.02f) {
-			Vec3 c = hp + Vec3{0, 0.14f, 0};
-			Vec3 n = normalize(app.headPos - c);
-			Vec3 r = normalize(cross({0, 1, 0}, n));
-			p.center = c;
-			p.right = r;
-			p.up = cross(n, r);
-			p.halfW = 0.17f;
-			p.halfH = p.halfW * 0.75f;
-			p.u0 = 0; p.u1 = 1; p.v0 = 0; p.v1 = 1;
-			p.alpha = a;
-			p.visible = true;
+// Envoie au jeu une touche du clavier virtuel (appui bref).
+void typeKey(App &app, unsigned key, unsigned mods, double now) {
+	unsigned retroMods = (mods & lolvr::kUiModShift) ? (unsigned)RETROKMOD_SHIFT : 0u;
+	CoreHost::get().key(key, true, retroMods);
+	app.pendingKeys.push_back({key, retroMods, now + 0.07});
+}
+
+void releaseTypedKeys(App &app, double now, bool all) {
+	for (size_t i = 0; i < app.pendingKeys.size();) {
+		if (all || now >= app.pendingKeys[i].releaseAt) {
+			CoreHost::get().key(app.pendingKeys[i].key, false, app.pendingKeys[i].mods);
+			app.pendingKeys.erase(app.pendingKeys.begin() + (long)i);
+		} else {
+			i++;
 		}
 	}
+}
+
+// Interface : pointeur, panneaux, poignées, clavier. pointer = faux quand l'application n'a pas la main.
+void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed, XrVector2f rightStick, lolvr::UiFrameOutput &out) {
+	lolvr::UiFrameInput in;
+	in.dt = dt;
+	in.anchorPos = app.anchorPos;
+	in.anchorYaw = app.anchorYaw;
+	int hand = app.activeHand;
+	in.aimValid = pointer && app.aimValid[hand] && app.screenPlaced;
+	if (in.aimValid) {
+		Quat aimRot = toQuat(app.aimPose[hand].orientation);
+		in.tip = toVec3(app.aimPose[hand].position) + rotate(aimRot, lolvr::gloveFingertip(hand == kLeft, 0.0f));
+		in.dir = rotate(aimRot, {0, 0, -1});
+	}
+	in.triggerDown = pointer && app.triggerDown[hand];
+	in.triggerPressed = pointer && triggerPressed;
+	in.stickX = rightStick.x;
+	in.stickY = rightStick.y;
+	in.screenPos = app.screenPos;
+	in.screenRot = screenRot(app);
+	in.dispW = app.dispW;
+	in.dispH = app.dispH;
+	in.cropX = app.cropX; in.cropY = app.cropY; in.cropW = app.cropW; in.cropH = app.cropH;
+	in.crt = app.environment == lolvr::kEnvPassthroughCrt;
+	in.split = app.split;
+	bool panelsOn = app.detached && app.environment != lolvr::kEnvPassthroughCrt && app.gameStarted;
+	in.atlasVisible = panelsOn && app.atlasReady;
+	in.atlasLive = app.automapOpen;
+	in.atlasTexture = app.atlasTex;
+	in.atlasW = app.srcTexW > 0 ? app.srcTexW : 320;
+	in.atlasH = app.srcTexH > 0 ? app.srcTexH : 200;
+	in.keyboardOpen = app.keyboardOpen;
+	app.ui.setOptions(app.fireOn, app.detached);
+	if (!app.ui.hasLayout() && app.screenPlaced)
+		app.ui.resetLayout(in);
+	app.ui.update(in, out, app.ss);
+
+	if (out.screenDragging)
+		dragScreen(app, out.screenCenter, out.screenZoom);
+	for (int i = 0; i < out.keyCount; i++)
+		typeKey(app, out.keys[i], out.keyMods[i], now);
+	switch (out.action) {
+	case lolvr::kUiActionToggleFire:
+		app.fireOn = !app.fireOn;
+		app.settingsDirty = true;
+		break;
+	case lolvr::kUiActionToggleDetach:
+		app.detached = !app.detached;
+		app.settingsDirty = true;
+		break;
+	case lolvr::kUiActionResetLayout:
+		app.ui.resetLayout(in);
+		app.settingsDirty = true;
+		break;
+	case lolvr::kUiActionCloseKeyboard:
+		app.keyboardOpen = false;
+		break;
+	default:
+		break;
+	}
+	if (out.layoutChanged)
+		app.settingsDirty = true;
+	if (out.grabbed)
+		pulse(app, hand, 0.45f, 0.03f);
+	if (out.released)
+		pulse(app, hand, 0.25f, 0.02f);
+	if (out.clicked)
+		pulse(app, hand, 0.35f, 0.02f);
+	app.hitValid = out.hitValid;
+	app.hitPoint = out.hit;
+	app.hitRight = out.hitRight;
+	app.hitUp = out.hitUp;
+	app.hitRadius = out.hitRadius;
 }
 
 // ---------------------------------------------------------------------------
@@ -1343,99 +1495,31 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	if (!app.aimValid[app.activeHand] && app.aimValid[1 - app.activeHand])
 		app.activeHand = 1 - app.activeHand;
 
-	// Le pointeur part du bout de l'index du gant et va jusqu'à un panneau ou à l'écran.
-	app.hitValid = false;
-	app.hitRadius = 0.0f;
+	// Le pointeur part du bout de l'index du gant : panneaux, poignées, clavier ou écran.
 	int hand = app.activeHand;
-	updatePanels(app);
-	float w = app.dispW, h = app.dispH;
-	if (app.aimValid[hand] && app.screenPlaced) {
-		bool crt = app.environment == lolvr::kEnvPassthroughCrt;
-		Quat aimRot = toQuat(app.aimPose[hand].orientation);
-		Vec3 tip = toVec3(app.aimPose[hand].position) + rotate(aimRot, lolvr::gloveFingertip(hand == kLeft, 0.0f));
-		Vec3 dirW = rotate(aimRot, {0, 0, -1});
-		float gu = 0, gv = 0;
-		bool got = false;
-
-		// 1. Les panneaux d'interface (devant l'écran, plus près de la main)
-		float bestT = 1e9f;
-		for (int i = 0; i < 2; i++) {
-			const SceneState::Panel &p = app.panels[i];
-			if (!p.visible || p.alpha < 0.5f)
-				continue;
-			Vec3 n = cross(p.right, p.up);
-			float denom = dot(dirW, n);
-			if (fabsf(denom) < 1e-4f)
-				continue;
-			float t = dot(p.center - tip, n) / denom;
-			if (t <= 0.0f || t >= bestT)
-				continue;
-			Vec3 hitW = tip + dirW * t;
-			Vec3 d = hitW - p.center;
-			float x = dot(d, p.right) / p.halfW, y = dot(d, p.up) / p.halfH;
-			if (fabsf(x) > 1.08f || fabsf(y) > 1.12f)
-				continue;
-			x = clampf(x, -1.0f, 1.0f);
-			y = clampf(y, -1.0f, 1.0f);
-			gu = p.u0 + (p.u1 - p.u0) * (x + 1.0f) * 0.5f;
-			gv = p.v0 + (p.v1 - p.v0) * (1.0f - y) * 0.5f;
-			bestT = t;
-			got = true;
-			app.hitPoint = hitW;
-			app.hitRight = p.right;
-			app.hitUp = p.up;
-			app.hitRadius = p.halfH * 0.10f;
-		}
-
-		// 2. L'écran lui-même (ou la vue du donjon)
-		if (!got) {
-			Quat inv = conjugate(screenRot(app));
-			Vec3 origin = rotate(inv, tip - app.screenPos);
-			Vec3 dir = rotate(inv, dirW);
-			if (dir.z < -1e-4f && origin.z > 0.0f) {
-				// La dalle du moniteur cathodique est bombée : on affine le point d'impact.
-				float zPlane = 0.0f;
-				Vec3 hit = origin;
-				for (int it = 0; it < (crt ? 3 : 1); it++) {
-					float t = (zPlane - origin.z) / dir.z;
-					hit = origin + dir * t;
-					if (crt)
-						zPlane = w * lolvr::crtGlassZ(hit.x / w, hit.y / w);
-				}
-				float u = hit.x / w + 0.5f;
-				float v = 0.5f - hit.y / h;
-				if (u > -0.15f && u < 1.15f && v > -0.15f && v < 1.15f) {
-					u = clampf(u, 0.0f, 1.0f);
-					v = clampf(v, 0.0f, 1.0f);
-					gu = (app.cropX + app.cropW * u) / 320.0f;
-					gv = (app.cropY + app.cropH * v) / 200.0f;
-					Vec3 local{(u - 0.5f) * w, (0.5f - v) * h, zPlane + 0.004f};
-					app.hitPoint = rotate(screenRot(app), local) + app.screenPos;
-					got = true;
-				}
-			}
-		}
-		if (got) {
-			CoreHost::get().setPointer(gu, gv);
-			app.hitValid = true;
-		}
-	}
-	CoreHost::get().setMouseButtons(app.triggerDown[hand] && app.hitValid, app.squeezeDown[hand] && app.hitValid);
-	if (clicked[hand] && app.hitValid) {
+	XrVector2f left = getStick(app, kLeft);
+	XrVector2f right = getStick(app, kRight);
+	lolvr::UiFrameOutput ui;
+	updateUi(app, dt, now, true, clicked[hand] && app.triggerDown[hand], right, ui);
+	if (ui.pointerValid)
+		CoreHost::get().setPointer(ui.gu, ui.gv);
+	bool toGame = ui.buttonsToGame && !ui.dragging;
+	CoreHost::get().setMouseButtons(app.triggerDown[hand] && toGame, app.squeezeDown[hand] && toGame);
+	if (clicked[hand] && toGame) {
 		app.clickPulse = 1.0f;
 		pulse(app, hand, 0.28f, 0.018f);
 	}
+	float w = screenWidth(app);
 
 	// Joysticks : gauche = avancer/reculer/pas de côté, droit = tourner.
-	XrVector2f left = getStick(app, kLeft);
-	XrVector2f right = getStick(app, kRight);
 	bool zoomMode = getBool(app, app.stickClickAction, kLeft);
+	bool stickBusy = zoomMode || ui.dragging; // le joystick droit règle l'écran ou un panneau
 	setKey(app.kUp, threshold(app.kUp.down, left.y), RETROK_UP);
 	setKey(app.kDown, threshold(app.kDown.down, -left.y), RETROK_DOWN);
 	setKey(app.kSlideL, threshold(app.kSlideL.down, -left.x), RETROK_LEFT);
 	setKey(app.kSlideR, threshold(app.kSlideR.down, left.x), RETROK_RIGHT);
-	setKey(app.kTurnL, !zoomMode && threshold(app.kTurnL.down, -right.x), RETROK_HOME);
-	setKey(app.kTurnR, !zoomMode && threshold(app.kTurnR.down, right.x), RETROK_PAGEUP);
+	setKey(app.kTurnL, !stickBusy && threshold(app.kTurnL.down, -right.x), RETROK_HOME);
+	setKey(app.kTurnR, !stickBusy && threshold(app.kTurnR.down, right.x), RETROK_PAGEUP);
 
 	// Clic du joystick gauche :
 	//   - maintenu + joystick droit haut/bas : taille de l'écran ; gauche/droite : distance ;
@@ -1468,8 +1552,15 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	setKey(app.kEnter, getBool(app, app.aAction, -1), RETROK_RETURN);
 	setKey(app.kEsc, getBool(app, app.bAction, -1), RETROK_ESCAPE);
 	setKey(app.kMap, getBool(app, app.yAction, -1), RETROK_m);
-	// X = clavier virtuel (pour nommer une sauvegarde), bouton menu = menu ScummVM.
-	CoreHost::get().setSpecialButtons(getBool(app, app.xAction, -1), getBool(app, app.menuAction, -1));
+	// X = clavier et options (pour nommer une sauvegarde, entre autres), bouton menu = menu ScummVM.
+	bool keyboardButton = getBool(app, app.xAction, -1);
+	if (keyboardButton && !app.keyboardButtonDown) {
+		app.keyboardOpen = !app.keyboardOpen;
+		pulse(app, kLeft, 0.3f, 0.03f);
+	}
+	app.keyboardButtonDown = keyboardButton;
+	CoreHost::get().setSpecialButtons(false, getBool(app, app.menuAction, -1));
+	releaseTypedKeys(app, now, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -1494,6 +1585,21 @@ void uploadFrame(App &app) {
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, app.srcTexW, app.srcTexH, GL_RGBA, GL_UNSIGNED_BYTE, app.frame.rgba.data());
 	}
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Atlas : tant que la carte est ouverte (et le fondu d'ouverture passé), on en garde une copie.
+	if (app.automapOpen && nowSeconds() - app.automapSince > 0.6) {
+		if (!app.atlasTex)
+			glGenTextures(1, &app.atlasTex);
+		glBindTexture(GL_TEXTURE_2D, app.atlasTex);
+		glTexImage2D(GL_TEXTURE_2D, 0, app.srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, app.srcTexW, app.srcTexH, 0,
+		             GL_RGBA, GL_UNSIGNED_BYTE, app.frame.rgba.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		app.atlasReady = true;
+	}
 
 	// Couleur moyenne de l'image : l'écran éclaire doucement les gants et la pièce.
 	const uint8_t *px = app.frame.rgba.data();
@@ -1534,26 +1640,24 @@ bool renderQuad(App &app) {
 	uint32_t index = 0;
 	if (!acquireImage(app.quadSwapchain, index))
 		return false;
-	const bool windowEnv = app.environment == lolvr::kEnvWindow;
 	const int sw = app.quadSwapchain.width, sh = app.quadSwapchain.height;
-	// Zone du calque utilisée : en mode fenêtre, au format exact de ce qui est affiché ;
-	// sinon l'image 4:3 avec sa petite marge noire cachée sous le cadre.
-	int vx = kQuadMarginX, vy = kQuadMarginY, vw = kQuadImageW, vh = kQuadImageH;
-	if (windowEnv) {
-		float aspect = app.dispW / app.dispH;
-		vw = sw;
-		vh = (int)((float)sw / aspect);
-		if (vh > sh) {
-			vh = sh;
-			vw = (int)((float)sh * aspect);
-		}
-		vx = vy = 0;
+	// L'image occupe le centre du calque, au format de ce qui est affiché, entourée d'une petite
+	// marge noire cachée sous le cadre.
+	float aspect = app.dispW / app.dispH;
+	int vh = kQuadImageH, vw = (int)((float)vh * aspect + 0.5f);
+	if (vw > kQuadImageW) {
+		vw = kQuadImageW;
+		vh = (int)((float)vw / aspect + 0.5f);
 	}
-	app.quadRectW = windowEnv ? vw : sw;
-	app.quadRectH = windowEnv ? vh : sh;
+	int vx = kQuadMarginX, vy = kQuadMarginY;
+	app.quadRectW = vw + 2 * kQuadMarginX;
+	app.quadRectH = vh + 2 * kQuadMarginY;
+	app.quadScaleX = (float)app.quadRectW / (float)vw;
+	app.quadScaleY = (float)app.quadRectH / (float)vh;
+	(void)sh;
 	glBindFramebuffer(GL_FRAMEBUFFER, app.fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, app.quadSwapchain.images[index].image, 0);
-	glViewport(0, 0, sw, sh);
+	glViewport(0, 0, sw, app.quadSwapchain.height);
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	if (app.srcTexW > 0) {
@@ -1581,17 +1685,12 @@ void fillSceneState(App &app, double now, bool focused) {
 	s.screenPos = app.screenPos;
 	s.screenRot = screenRot(app);
 	s.screenWidth = app.dispW;
-	s.frameVisible = app.environment != lolvr::kEnvWindow || app.windowMix < 0.02f;
-	for (int i = 0; i < 2; i++)
-		s.panels[i] = app.panels[i];
-	if (app.environment != lolvr::kEnvWindow || app.windowMix < 0.6f)
-		for (int i = 0; i < 2; i++)
-			s.panels[i].visible = false;
+	s.screenAspect = app.dispH / app.dispW;
 	s.hitRight = app.hitRight;
 	s.hitUp = app.hitUp;
 	s.hitRadius = app.hitRadius;
 	s.roomPos = app.roomPos;
-	s.roomYaw = app.screenYaw;
+	s.roomYaw = app.anchorYaw;
 	for (int h = 0; h < 2; h++) {
 		lolvr::HandState &hand = s.hands[h];
 		bool pointing = h == app.activeHand;
@@ -1645,12 +1744,20 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 		}
 
 		updateGameEvents(app, now);
-		updateWindowView(app, now, dt);
+		updateLayout(app, now);
+		if (!app.imagesLoaded && app.scene.ready()) {
+			// Images du joueur pour la fenêtre et le portrait (facultatives)
+			app.imagesLoaded = true;
+			loadDecorImage(app, 0, "fenetre");
+			loadDecorImage(app, 1, "portrait");
+		}
 		if (focused) {
 			updateInput(app, time, dt, now);
 		} else {
 			CoreHost::get().setMouseButtons(false, false);
-			app.hitValid = false;
+			lolvr::UiFrameOutput ui;
+			updateUi(app, dt, now, false, false, XrVector2f{0, 0}, ui);
+			releaseTypedKeys(app, now, true);
 		}
 		app.clickPulse *= expf(-dt * 7.0f);
 		if (app.settingsDirty)
@@ -1665,7 +1772,8 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 		if (app.headValid)
 			ambience.setListener(app.headPos, app.headRot);
 		ambience.setScreen(app.screenPos, screenRot(app), app.dispW);
-		ambience.setRoom(app.roomPos, app.screenYaw);
+		ambience.setRoom(app.roomPos, app.anchorYaw);
+		ambience.setFire(app.fireOn);
 		ambience.setMood(visible && app.environment == lolvr::kEnvLibrary && app.scene.ready(), app.shownTheme);
 
 		// Calques, du fond vers l'avant : vraie pièce (réalité mixte), image du jeu, décor.
@@ -1683,10 +1791,7 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 			quadLayer.subImage.imageRect.extent = {app.quadRectW, app.quadRectH};
 			quadLayer.pose.orientation = toXr(screenRot(app));
 			quadLayer.pose.position = toXr(app.screenPos);
-			if (app.environment == lolvr::kEnvWindow)
-				quadLayer.size = {app.dispW, app.dispH};
-			else
-				quadLayer.size = {app.dispW * kQuadScale, app.dispH * kQuadScale};
+			quadLayer.size = {app.dispW * app.quadScaleX, app.dispH * app.quadScaleY};
 			layers.push_back((const XrCompositionLayerBaseHeader *)&quadLayer);
 		}
 
@@ -1762,6 +1867,8 @@ void releaseAllKeys(App &app) {
 	app.squeezeValue[0] = app.squeezeValue[1] = 0.0f;
 	app.zoomDown = false;
 	app.recenterDown = false;
+	app.keyboardButtonDown = false;
+	releaseTypedKeys(app, 0.0, true);
 	CoreHost::get().setMouseButtons(false, false);
 }
 
@@ -1835,6 +1942,7 @@ void android_main(android_app *androidApp) {
 	ANativeActivity *activity = androidApp->activity;
 	std::string internal = activity->internalDataPath ? activity->internalDataPath : "/data/local/tmp";
 	std::string external = activity->externalDataPath ? activity->externalDataPath : internal;
+	app.decorDir = external + "/decor";
 	app.systemDir = internal + "/system";
 	app.saveDir = external + "/sauvegardes";
 	app.gameRoot = external + "/lol";
@@ -1842,6 +1950,7 @@ void android_main(android_app *androidApp) {
 	makeDirs(app.systemDir);
 	makeDirs(app.saveDir);
 	makeDirs(app.gameRoot);
+	makeDirs(app.decorDir);
 	extractAssetDir(activity->assetManager, "scummvm/theme", app.systemDir + "/scummvm/theme");
 	extractAssetDir(activity->assetManager, "scummvm/extra", app.systemDir + "/scummvm/extra");
 	LOGI("dossier du jeu : %s", app.gameRoot.c_str());

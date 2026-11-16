@@ -25,8 +25,18 @@ enum TexLayer {
 	kTexGold,       // dorure sculptée
 	kTexWhite,      // blanc uni (objets de couleur unie)
 	kTexLattice,    // vitrail au plomb (alpha = opacité)
+	kTexProcCount,  // fin des couches calculées
+	// Images fournies par le joueur (dossier « decor ») : chacune occupe deux couches,
+	// moitié gauche et moitié droite, pour garder toute sa finesse.
+	kTexImgWindowA = kTexProcCount,
+	kTexImgWindowB,
+	kTexImgPortraitA,
+	kTexImgPortraitB,
 	kTexCount
 };
+
+// Marge (en fraction de la couche) autour de chaque moitié d'image, contre les bavures de filtrage.
+const float kImgMargin = 8.0f / 512.0f;
 
 const int kTexSize = 512;
 
