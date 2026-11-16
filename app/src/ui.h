@@ -13,16 +13,22 @@ enum UiPanelId {
 	kPanelSpells,    // colonne de gauche : parchemin des sorts
 	kPanelControls,  // flèches de déplacement, options, repos
 	kPanelCompass,   // colonne de droite : boussole, atlas, lampe, bourse
-	kPanelAtlas,     // dernière carte consultée
 	kPanelKeyboard,  // clavier et options
 	kUiPanelCount
 };
 
-// Position d'un panneau autour du joueur : direction (lacet, tangage) et distance depuis le
-// point d'ancrage (la tête au dernier recentrage), taille en mètres par pixel de l'image.
+// Position d'un panneau.
+//  - Panneaux du jeu : a, b, c = position dans le repère de l'écran (droite, haut, vers le joueur),
+//    en fractions de la largeur de l'image entière ; scale = même unité, par pixel. Ils suivent
+//    donc l'écran quand on le déplace ou qu'on change sa taille.
+//  - Clavier : a = lacet, b = tangage, c = distance depuis le point d'ancrage ; scale en mètres par pixel.
 struct UiPlacement {
-	float yaw = 0.0f, pitch = 0.0f, dist = 1.0f, scale = 0.002f;
+	float a = 0.0f, b = 0.0f, c = 0.0f, scale = 0.002f;
 };
+
+// Vue du donjon seule : hauteur et décalage vers le haut, en fractions de la largeur de l'image entière.
+const float kSplitViewHeight = 0.54f;
+const float kSplitViewLift = 0.16f;
 
 enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionResetLayout, kUiActionCloseKeyboard };
 
@@ -38,6 +44,13 @@ struct UiFrameInput {
 	Vec3 tip = {0, 0, 0}, dir = {0, 0, -1};
 	bool triggerDown = false, triggerPressed = false;
 	float stickX = 0.0f, stickY = 0.0f; // joystick droit
+	// Repère des panneaux : centre et largeur de l'image entière
+	Vec3 basePos = {0, 0, -2.2f};
+	float fullW = 2.4f;
+	// La pièce (bibliothèque) : les panneaux ne traversent ni le plancher, ni les murs, ni la table.
+	bool roomClamp = false;
+	Vec3 roomPos = {0, 0, 0};
+	float roomYaw = 0.0f;
 	// Écran principal : pose, taille affichée, portion de l'image du jeu (pixels 320x200)
 	Vec3 screenPos = {0, 0, -2.2f};
 	Quat screenRot = {0, 0, 0, 1};
@@ -46,10 +59,6 @@ struct UiFrameInput {
 	bool crt = false;
 	// État du jeu
 	bool split = false;       // l'interface détachée est affichée
-	bool atlasVisible = false; // le panneau de l'atlas a une carte à montrer
-	bool atlasLive = false;    // la carte est ouverte dans le jeu : le panneau est cliquable
-	unsigned atlasTexture = 0;
-	int atlasW = 320, atlasH = 200;
 	bool keyboardOpen = false;
 };
 
@@ -62,6 +71,7 @@ struct UiFrameOutput {
 	bool hitValid = false;
 	Vec3 hit = {0, 0, 0}, hitRight = {0, 0, 0}, hitUp = {0, 0, 0};
 	float hitRadius = 0.0f;
+	bool pointerLong = false; // le doigt ne vise ni l'écran ni un panneau : rayon entier, pour viser les poignées
 	// Déplacement à la poignée
 	bool dragging = false;        // un panneau ou l'écran est tenu (le joystick droit le règle)
 	bool screenDragging = false;  // … et c'est l'écran principal
@@ -85,7 +95,7 @@ public:
 	void initGl(bool srgb);
 	// Étiquettes des boutons d'options.
 	void setOptions(bool fireOn, bool detached);
-	// Disposition par défaut, autour de l'écran tel qu'il est placé.
+	// Disposition par défaut : tout dans le plan de l'écran, autour de la vue du donjon.
 	void resetLayout(const UiFrameInput &in);
 	bool hasLayout() const { return placed; }
 	void setHasLayout(bool v) { placed = v; }

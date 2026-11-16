@@ -48,6 +48,9 @@
 #include "ui.h"
 #include "vecmath.h"
 
+#include <ctype.h>
+#include <dirent.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
@@ -460,8 +463,10 @@ struct App {
 	bool fireOn = false;
 	bool layoutLoaded = false;
 	// Atlas : copie de la dernière carte consultée
-	GLuint atlasTex = 0;
-	bool atlasReady = false;
+	float viewLift = 0.0f; // la vue du donjon seule est remontée d'autant (mètres)
+	int moveDir = 0;       // direction tenue au joystick gauche
+	double imagesCheckedAt = -100.0;
+	bool imageLoaded[4] = {false, false, false, false};
 	double automapSince = 0;
 	// Touches du clavier virtuel à relâcher
 	struct PendingKey {
@@ -486,6 +491,7 @@ struct App {
 	Vec3 hitPoint = {0, 0, 0};
 	Vec3 hitRight = {0, 0, 0}, hitUp = {0, 0, 0};
 	float hitRadius = 0.0f;
+	bool pointerLong = false;
 	bool triggerDown[2] = {false, false};
 	bool squeezeDown[2] = {false, false};
 	float triggerValue[2] = {0, 0}, squeezeValue[2] = {0, 0};
@@ -1004,7 +1010,7 @@ void loadSettings(App &app, int &environment) {
 	if (!f)
 		return;
 	char line[256];
-	int screenIndex = 0;
+	int screenIndex = 0, loadedPanels = 0;
 	while (fgets(line, sizeof(line), f)) {
 		char name[32] = {0};
 		int used = 0;
@@ -1030,19 +1036,23 @@ void loadSettings(App &app, int &environment) {
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
-		} else if (!strcmp(name, "panneau")) {
-			char key[32] = {0};
-			float yaw = 0, pitch = 0, dist = 0, scale = 0;
-			if (sscanf(rest, "%31s %f %f %f %f", key, &yaw, &pitch, &dist, &scale) == 5)
+		} else if (!strcmp(name, "fenetre") || !strcmp(name, "clavier")) {
+			// fenetre <nom> x y z échelle (repère de l'écran) ; clavier lacet tangage distance échelle
+			char key[32] = "clavier";
+			float a = 0, b = 0, c = 0, scale = 0;
+			bool ok = !strcmp(name, "clavier") ? sscanf(rest, "%f %f %f %f", &a, &b, &c, &scale) == 4
+			                                   : sscanf(rest, "%31s %f %f %f %f", key, &a, &b, &c, &scale) == 5;
+			if (ok && scale >= 0.0004f && scale <= 0.02f && fabsf(a) <= 6.0f && fabsf(b) <= 6.0f && fabsf(c) <= 6.0f)
 				for (int i = 0; i < lolvr::kUiPanelCount; i++)
-					if (!strcmp(key, lolvr::Ui::panelKey(i)) && dist >= 0.2f && dist <= 6.0f && scale >= 0.0005f && scale <= 0.02f &&
-					    fabsf(yaw) <= 3.2f && fabsf(pitch) <= 1.4f) {
-						app.ui.placement[i] = {yaw, pitch, dist, scale};
-						app.layoutLoaded = true;
+					if (!strcmp(key, lolvr::Ui::panelKey(i))) {
+						app.ui.placement[i] = {a, b, c, scale};
+						loadedPanels |= 1 << i;
 					}
 		}
 	}
 	fclose(f);
+	// La disposition n'est reprise que si elle est complète (sinon : disposition d'origine).
+	app.layoutLoaded = loadedPanels == (1 << lolvr::kUiPanelCount) - 1;
 	if (app.layoutLoaded)
 		app.ui.setHasLayout(true);
 }
@@ -1060,7 +1070,10 @@ void saveSettings(App &app) {
 	if (app.ui.hasLayout())
 		for (int i = 0; i < lolvr::kUiPanelCount; i++) {
 			const lolvr::UiPlacement &pl = app.ui.placement[i];
-			fprintf(f, "panneau %s %.4f %.4f %.4f %.5f\n", lolvr::Ui::panelKey(i), pl.yaw, pl.pitch, pl.dist, pl.scale);
+			if (i == lolvr::kPanelKeyboard)
+				fprintf(f, "clavier %.4f %.4f %.4f %.5f\n", pl.a, pl.b, pl.c, pl.scale);
+			else
+				fprintf(f, "fenetre %s %.4f %.4f %.4f %.5f\n", lolvr::Ui::panelKey(i), pl.a, pl.b, pl.c, pl.scale);
 		}
 	fclose(f);
 }
@@ -1305,6 +1318,11 @@ void updateGameEvents(App &app, double now) {
 	}
 }
 
+// Centre de ce que l'écran affiche (la vue du donjon seule est remontée).
+Vec3 viewCenter(const App &app) {
+	return app.screenPos + Vec3{0, app.viewLift, 0};
+}
+
 // ---------------------------------------------------------------------------
 // Ce que montre l'écran principal : l'image entière, ou la vue du donjon seule
 
@@ -1318,43 +1336,64 @@ void updateLayout(App &app, double now) {
 		app.split = app.splitWanted;
 	float w = screenWidth(app);
 	if (app.split) {
-		// Même hauteur que l'image entière : seul le format change (pixels 1,2 fois plus hauts que larges).
+		// La vue seule est un peu moins haute que l'image entière et remontée, pour laisser la place
+		// aux fenêtres du groupe et de l'inventaire dessous, dans le même plan.
 		app.cropX = kViewX; app.cropY = kViewY; app.cropW = kViewW; app.cropH = kViewH;
-		app.dispH = w * 0.75f;
+		app.dispH = w * lolvr::kSplitViewHeight;
 		app.dispW = app.dispH * kViewW / (kViewH * 1.2f);
+		app.viewLift = w * lolvr::kSplitViewLift;
 	} else {
 		app.cropX = 0; app.cropY = 0; app.cropW = 320; app.cropH = 200;
 		app.dispW = w;
 		app.dispH = w * 0.75f;
+		app.viewLift = 0.0f;
 	}
 }
 
-// Images du joueur pour le décor : dossier « decor » à côté du dossier du jeu.
-bool loadDecorImage(App &app, int slot, const char *baseName) {
-	static const char *exts[] = {".png", ".jpg", ".jpeg", ".PNG", ".JPG"};
-	for (const char *ext : exts) {
-		std::string path = app.decorDir + "/" + baseName + ext;
-		FILE *f = fopen(path.c_str(), "rb");
-		if (!f)
-			continue;
-		std::vector<unsigned char> data;
-		unsigned char buf[65536];
-		size_t n;
-		while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && data.size() < (64u << 20))
-			data.insert(data.end(), buf, buf + n);
-		fclose(f);
-		int w = 0, h = 0, comp = 0;
-		unsigned char *px = stbi_load_from_memory(data.data(), (int)data.size(), &w, &h, &comp, 4);
-		if (!px) {
-			LOGW("image illisible : %s", path.c_str());
-			continue;
-		}
-		app.scene.setImage(slot, px, w, h);
-		stbi_image_free(px);
-		LOGI("image du décor : %s (%d x %d)", path.c_str(), w, h);
-		return true;
+// Images du joueur pour le décor. On cherche dans le dossier « decor » (et, par tolérance, dans le
+// dossier du jeu et à la racine) un fichier image dont le nom commence par fenetre, portrait,
+// tableau1 ou tableau2, sans tenir compte des majuscules ni de l'extension exacte.
+bool loadImageFile(App &app, int slot, const std::string &path) {
+	FILE *f = fopen(path.c_str(), "rb");
+	if (!f)
+		return false;
+	std::vector<unsigned char> data;
+	unsigned char buf[65536];
+	size_t n;
+	while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && data.size() < (64u << 20))
+		data.insert(data.end(), buf, buf + n);
+	fclose(f);
+	int w = 0, h = 0, comp = 0;
+	unsigned char *px = stbi_load_from_memory(data.data(), (int)data.size(), &w, &h, &comp, 4);
+	if (!px) {
+		LOGW("image illisible : %s (%s)", path.c_str(), stbi_failure_reason() ? stbi_failure_reason() : "?");
+		return false;
 	}
-	return false;
+	app.scene.setImage(slot, px, w, h);
+	stbi_image_free(px);
+	LOGI("image du décor : %s (%d x %d)", path.c_str(), w, h);
+	return true;
+}
+
+void scanDecorImages(App &app) {
+	static const char *prefixes[4] = {"fen", "portrait", "tableau1", "tableau2"};
+	const std::string dirs[3] = {app.decorDir, app.gameRoot, app.decorDir + "/.."};
+	for (const std::string &dir : dirs) {
+		DIR *dp = opendir(dir.c_str());
+		if (!dp)
+			continue;
+		while (struct dirent *e = readdir(dp)) {
+			std::string name = e->d_name, lower;
+			for (char ch : name)
+				lower += (char)tolower((unsigned char)ch);
+			if (lower.find(".png") == std::string::npos && lower.find(".jpg") == std::string::npos && lower.find(".jpeg") == std::string::npos)
+				continue;
+			for (int slot = 0; slot < 4; slot++)
+				if (!app.imageLoaded[slot] && lower.compare(0, strlen(prefixes[slot]), prefixes[slot]) == 0)
+					app.imageLoaded[slot] = loadImageFile(app, slot, dir + "/" + name);
+		}
+		closedir(dp);
+	}
 }
 
 // Envoie au jeu une touche du clavier virtuel (appui bref).
@@ -1392,19 +1431,18 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	in.triggerPressed = pointer && triggerPressed;
 	in.stickX = rightStick.x;
 	in.stickY = rightStick.y;
-	in.screenPos = app.screenPos;
+	in.screenPos = viewCenter(app);
+	in.basePos = app.screenPos;
+	in.fullW = screenWidth(app);
+	in.roomClamp = app.environment == lolvr::kEnvLibrary;
+	in.roomPos = app.roomPos;
+	in.roomYaw = app.anchorYaw;
 	in.screenRot = screenRot(app);
 	in.dispW = app.dispW;
 	in.dispH = app.dispH;
 	in.cropX = app.cropX; in.cropY = app.cropY; in.cropW = app.cropW; in.cropH = app.cropH;
 	in.crt = app.environment == lolvr::kEnvPassthroughCrt;
 	in.split = app.split;
-	bool panelsOn = app.detached && app.environment != lolvr::kEnvPassthroughCrt && app.gameStarted;
-	in.atlasVisible = panelsOn && app.atlasReady;
-	in.atlasLive = app.automapOpen;
-	in.atlasTexture = app.atlasTex;
-	in.atlasW = app.srcTexW > 0 ? app.srcTexW : 320;
-	in.atlasH = app.srcTexH > 0 ? app.srcTexH : 200;
 	in.keyboardOpen = app.keyboardOpen;
 	app.ui.setOptions(app.fireOn, app.detached);
 	if (!app.ui.hasLayout() && app.screenPlaced)
@@ -1412,7 +1450,7 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	app.ui.update(in, out, app.ss);
 
 	if (out.screenDragging)
-		dragScreen(app, out.screenCenter, out.screenZoom);
+		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0}, out.screenZoom);
 	for (int i = 0; i < out.keyCount; i++)
 		typeKey(app, out.keys[i], out.keyMods[i], now);
 	switch (out.action) {
@@ -1447,6 +1485,7 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	app.hitRight = out.hitRight;
 	app.hitUp = out.hitUp;
 	app.hitRadius = out.hitRadius;
+	app.pointerLong = out.pointerLong;
 }
 
 // ---------------------------------------------------------------------------
@@ -1514,10 +1553,26 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	// Joysticks : gauche = avancer/reculer/pas de côté, droit = tourner.
 	bool zoomMode = getBool(app, app.stickClickAction, kLeft);
 	bool stickBusy = zoomMode || ui.dragging; // le joystick droit règle l'écran ou un panneau
-	setKey(app.kUp, threshold(app.kUp.down, left.y), RETROK_UP);
-	setKey(app.kDown, threshold(app.kDown.down, -left.y), RETROK_DOWN);
-	setKey(app.kSlideL, threshold(app.kSlideL.down, -left.x), RETROK_LEFT);
-	setKey(app.kSlideR, threshold(app.kSlideR.down, left.x), RETROK_RIGHT);
+	// Une seule direction à la fois : celle où le joystick penche le plus. La direction tenue garde
+	// l'avantage, pour qu'un pas de côté un peu en biais ne se transforme pas en marche avant.
+	{
+		float ax = fabsf(left.x), ay = fabsf(left.y);
+		float m = ax > ay ? ax : ay;
+		int dir = 0; // 1 avant, 2 arrière, 3 gauche, 4 droite
+		if (m > (app.moveDir ? 0.35f : 0.55f)) {
+			bool horizontal = ax > ay;
+			if (app.moveDir == 1 || app.moveDir == 2)
+				horizontal = ax > ay * 1.5f;
+			else if (app.moveDir == 3 || app.moveDir == 4)
+				horizontal = ax * 1.5f > ay;
+			dir = horizontal ? (left.x < 0 ? 3 : 4) : (left.y > 0 ? 1 : 2);
+		}
+		app.moveDir = dir;
+		setKey(app.kUp, dir == 1, RETROK_UP);
+		setKey(app.kDown, dir == 2, RETROK_DOWN);
+		setKey(app.kSlideL, dir == 3, RETROK_LEFT);
+		setKey(app.kSlideR, dir == 4, RETROK_RIGHT);
+	}
 	setKey(app.kTurnL, !stickBusy && threshold(app.kTurnL.down, -right.x), RETROK_HOME);
 	setKey(app.kTurnR, !stickBusy && threshold(app.kTurnR.down, right.x), RETROK_PAGEUP);
 
@@ -1585,21 +1640,6 @@ void uploadFrame(App &app) {
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, app.srcTexW, app.srcTexH, GL_RGBA, GL_UNSIGNED_BYTE, app.frame.rgba.data());
 	}
 	glBindTexture(GL_TEXTURE_2D, 0);
-
-	// Atlas : tant que la carte est ouverte (et le fondu d'ouverture passé), on en garde une copie.
-	if (app.automapOpen && nowSeconds() - app.automapSince > 0.6) {
-		if (!app.atlasTex)
-			glGenTextures(1, &app.atlasTex);
-		glBindTexture(GL_TEXTURE_2D, app.atlasTex);
-		glTexImage2D(GL_TEXTURE_2D, 0, app.srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, app.srcTexW, app.srcTexH, 0,
-		             GL_RGBA, GL_UNSIGNED_BYTE, app.frame.rgba.data());
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		app.atlasReady = true;
-	}
 
 	// Couleur moyenne de l'image : l'écran éclaire doucement les gants et la pièce.
 	const uint8_t *px = app.frame.rgba.data();
@@ -1682,13 +1722,14 @@ void fillSceneState(App &app, double now, bool focused) {
 	s.environment = app.environment;
 	s.theme = app.shownTheme;
 	s.time = now - app.startTime;
-	s.screenPos = app.screenPos;
+	s.screenPos = viewCenter(app);
 	s.screenRot = screenRot(app);
 	s.screenWidth = app.dispW;
 	s.screenAspect = app.dispH / app.dispW;
 	s.hitRight = app.hitRight;
 	s.hitUp = app.hitUp;
 	s.hitRadius = app.hitRadius;
+	s.pointerLong = app.pointerLong;
 	s.roomPos = app.roomPos;
 	s.roomYaw = app.anchorYaw;
 	for (int h = 0; h < 2; h++) {
@@ -1745,11 +1786,11 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 
 		updateGameEvents(app, now);
 		updateLayout(app, now);
-		if (!app.imagesLoaded && app.scene.ready()) {
-			// Images du joueur pour la fenêtre et le portrait (facultatives)
-			app.imagesLoaded = true;
-			loadDecorImage(app, 0, "fenetre");
-			loadDecorImage(app, 1, "portrait");
+		if (app.scene.ready() && now - app.imagesCheckedAt > 4.0 &&
+		    !(app.imageLoaded[0] && app.imageLoaded[1] && app.imageLoaded[2] && app.imageLoaded[3])) {
+			// Images du joueur (facultatives) : on regarde de temps en temps si elles sont arrivées.
+			app.imagesCheckedAt = now;
+			scanDecorImages(app);
 		}
 		if (focused) {
 			updateInput(app, time, dt, now);
@@ -1771,7 +1812,7 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 		Ambience &ambience = Ambience::get();
 		if (app.headValid)
 			ambience.setListener(app.headPos, app.headRot);
-		ambience.setScreen(app.screenPos, screenRot(app), app.dispW);
+		ambience.setScreen(viewCenter(app), screenRot(app), app.dispW);
 		ambience.setRoom(app.roomPos, app.anchorYaw);
 		ambience.setFire(app.fireOn);
 		ambience.setMood(visible && app.environment == lolvr::kEnvLibrary && app.scene.ready(), app.shownTheme);
@@ -1790,7 +1831,7 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 			quadLayer.subImage.imageRect.offset = {0, 0};
 			quadLayer.subImage.imageRect.extent = {app.quadRectW, app.quadRectH};
 			quadLayer.pose.orientation = toXr(screenRot(app));
-			quadLayer.pose.position = toXr(app.screenPos);
+			quadLayer.pose.position = toXr(viewCenter(app));
 			quadLayer.size = {app.dispW * app.quadScaleX, app.dispH * app.quadScaleY};
 			layers.push_back((const XrCompositionLayerBaseHeader *)&quadLayer);
 		}

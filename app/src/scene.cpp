@@ -499,6 +499,7 @@ struct Scene::Impl {
 	float fade = 0.0f;
 	MeshBuilder dynBuilder;
 	FxBuilder fxBuilder;
+	int fxAmbientCount = 0;
 
 	void startJob(int theme, bool all);
 	void finishJob();
@@ -549,9 +550,9 @@ void Scene::Impl::rebuildRoom() {
 
 // Copie une image du joueur dans deux couches du tableau de textures (moitié gauche, moitié droite).
 void Scene::setImage(int slot, const unsigned char *rgba, int w, int h) {
-	if (slot < 0 || slot > 1 || !rgba || w < 2 || h < 2 || !d->texArray)
+	if (slot < 0 || slot > 3 || !rgba || w < 2 || h < 2 || !d->texArray)
 		return;
-	const int base = slot == 0 ? kTexImgWindowA : kTexImgPortraitA;
+	const int base = kTexImgWindowA + slot * 2;
 	const int N = kTexSize;
 	const float m = kImgMargin;
 	std::vector<uint8_t> px((size_t)N * N * 4);
@@ -587,6 +588,9 @@ void Scene::setImage(int slot, const unsigned char *rgba, int w, int h) {
 	if (slot == 0) {
 		d->roomOptions.windowImage = true;
 		d->roomOptions.windowAspect = aspect;
+	} else if (slot >= 2) {
+		d->roomOptions.paintingImage[slot - 2] = true;
+		d->roomOptions.paintingAspect[slot - 2] = aspect;
 	} else {
 		d->roomOptions.portraitImage = true;
 		d->roomOptions.portraitAspect = aspect;
@@ -800,6 +804,7 @@ void Scene::Impl::buildFx(const SceneState &s) {
 		fx.sprite(led + screenN * 0.004f, 0.05f * s.screenWidth, 0.05f * s.screenWidth, col, kFxGlow, 1);
 	}
 
+	fxAmbientCount = (int)fx.verts.size(); // tout ce qui suit est dessiné par-dessus l'image du jeu
 	// Pointeur : un filet de lumière qui part du bout de l'index, et une lueur là où il touche l'écran.
 	for (int h = 0; h < 2; h++) {
 		const HandState &hand = s.hands[h];
@@ -808,15 +813,17 @@ void Scene::Impl::buildFx(const SceneState &s) {
 		Vec3 tip = hand.pos + rotate(hand.rot, gloveFingertip(h == 0, hand.trigger));
 		Vec3 dir = rotate(hand.rot, {0, 0, -1});
 		Vec3 start = tip + dir * 0.012f;
-		float len = 0.34f;
+		// Court quand on vise l'écran ou un panneau (la lueur suffit) ; entier sinon, pour bien
+		// voir où l'on vise et attraper les poignées.
+		float len = s.pointerLong ? 3.5f : 0.34f;
 		if (s.hitValid)
-			len = fminf(len, fmaxf(0.02f, length(s.hit - start) * 0.9f));
+			len = fminf(len, fmaxf(0.02f, length(s.hit - start) * (s.pointerLong ? 1.0f : 0.9f)));
 		Vec3 end = start + dir * len;
 		Vec3 side = normalize(cross(dir, {0, 1, 0}));
 		if (dot(side, side) < 0.5f)
 			side = {1, 0, 0};
 		Vec3 up = normalize(cross(side, dir));
-		const float w = 0.011f;
+		const float w = s.pointerLong ? 0.007f : 0.011f;
 		const float col[4] = {1.0f, 0.82f, 0.45f, 0.55f + 0.45f * s.clickPulse};
 		fx.quad(start - side * w, start + side * w, end + side * w, end - side * w, col, kFxBeam);
 		fx.quad(start - up * w, start + up * w, end + up * w, end - up * w, col, kFxBeam);
@@ -1064,6 +1071,40 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glBindVertexArray(d->roomAlpha.vao);
 		glDrawArrays(GL_TRIANGLES, 0, d->roomAlpha.count);
 	}
+	const int fxTotal = d->fxMesh.count;
+	const int fxAmbient = d->fxAmbientCount < fxTotal ? d->fxAmbientCount : fxTotal;
+	auto drawFx = [&](int first, int count) {
+		if (count <= 0)
+			return;
+		glUseProgram(d->fxProgram);
+		glUniformMatrix4fv(d->fx.viewProj, 1, GL_FALSE, viewProj.m);
+		glUniform3f(d->fx.camRight, camRight.x, camRight.y, camRight.z);
+		glUniform3f(d->fx.camUp, camUp.x, camUp.y, camUp.z);
+		glUniform3f(d->fx.camPos, camPos.x, camPos.y, camPos.z);
+		glUniform1f(d->fx.time, (float)fmod(s.time, 1000.0));
+		glUniform1f(d->fx.fade, library ? d->fade : 1.0f);
+		glDisable(GL_CULL_FACE);
+		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		glActiveTexture(GL_TEXTURE0);
+		glBindVertexArray(d->fxMesh.vao);
+		glDrawArrays(GL_TRIANGLES, first, count);
+		glEnable(GL_CULL_FACE);
+	};
+	// 1. Lueurs, flammes, ombres du décor
+	drawFx(0, fxAmbient);
+	// 2. L'image du jeu doit rester pure : on efface tout ce que les lueurs du décor ont déposé
+	//    sur elle (sauf là où un objet solide, comme un gant, passe devant).
+	if (!crt) {
+		glDisable(GL_BLEND);
+		glUseProgram(d->flatProgram);
+		Mat4 mvp = multiply(viewProj, d->holeMat);
+		glUniformMatrix4fv(d->flat.mvp, 1, GL_FALSE, mvp.m);
+		glUniform4f(d->flat.color, 0, 0, 0, 0);
+		glBindVertexArray(d->holeMesh.vao);
+		glDrawArrays(GL_TRIANGLES, 0, d->holeMesh.count);
+		glEnable(GL_BLEND);
+	}
+	// 3. Panneaux et poignées
 	if (d->panelMesh.count > 0 && !d->panelDraws.empty()) {
 		// Du plus loin au plus près de l'œil, pour que les panneaux se recouvrent correctement.
 		std::vector<int> order(d->panelDraws.size());
@@ -1095,19 +1136,8 @@ void Scene::render(const Mat4 &view, const Mat4 &proj, const SceneState &s) {
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glEnable(GL_CULL_FACE);
 	}
-	if (d->fxMesh.count > 0) {
-		glUseProgram(d->fxProgram);
-		glUniformMatrix4fv(d->fx.viewProj, 1, GL_FALSE, viewProj.m);
-		glUniform3f(d->fx.camRight, camRight.x, camRight.y, camRight.z);
-		glUniform3f(d->fx.camUp, camUp.x, camUp.y, camUp.z);
-		glUniform3f(d->fx.camPos, camPos.x, camPos.y, camPos.z);
-		glUniform1f(d->fx.time, (float)fmod(s.time, 1000.0));
-		glUniform1f(d->fx.fade, library ? d->fade : 1.0f);
-		glDisable(GL_CULL_FACE);
-		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
-		glBindVertexArray(d->fxMesh.vao);
-		glDrawArrays(GL_TRIANGLES, 0, d->fxMesh.count);
-	}
+	// 4. Pointeur
+	drawFx(fxAmbient, fxTotal - fxAmbient);
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	glUseProgram(0);

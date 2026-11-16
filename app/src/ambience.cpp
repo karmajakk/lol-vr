@@ -197,7 +197,10 @@ void Ambience::process(int16_t *samples, size_t frames) {
 	bool on = g.ambienceOn.load(std::memory_order_relaxed) != 0;
 	float masterTarget = on ? kAmbienceVolume : 0.0f;
 	float slew = 1.0f - expf(-(float)frames / (rate * 0.8f));
-	const float want[4] = {th.wind, th.drips, th.crickets, th.rumble};
+	// Les sons d'extérieur (vent, gouttes, grillons, grondement) sont retirés : il ne reste que le
+	// feu de cheminée, que le joueur allume ou non.
+	(void)th;
+	const float want[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 	for (int i = 0; i < 4; i++)
 		st.level[i] += (want[i] - st.level[i]) * slew;
 	float masterStep = ((st.master + (masterTarget - st.master) * slew) - st.master) / (float)frames;

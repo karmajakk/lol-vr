@@ -38,7 +38,6 @@ const Source kSources[kUiPanelCount] = {
 	{0, 0, 112, 128},    // colonne de gauche (parchemin des sorts)
 	{0, 128, 84, 72},    // flèches, options, repos
 	{288, 0, 32, 122},   // colonne de droite (boussole, atlas, lampe, bourse)
-	{0, 0, 320, 200},    // atlas : image entière de la carte
 	{0, 0, (float)kKbW, (float)kKbH},
 };
 
@@ -212,7 +211,7 @@ Ui::~Ui() {
 }
 
 const char *Ui::panelKey(int id) {
-	static const char *names[kUiPanelCount] = {"groupe", "inventaire", "sorts", "commandes", "boussole", "atlas", "clavier"};
+	static const char *names[kUiPanelCount] = {"groupe", "inventaire", "sorts", "commandes", "boussole", "clavier"};
 	return id >= 0 && id < kUiPanelCount ? names[id] : "";
 }
 
@@ -229,66 +228,54 @@ void Ui::setOptions(bool fireOn, bool detached) {
 }
 
 void Ui::resetLayout(const UiFrameInput &in) {
-	const float deg = 3.14159265f / 180.0f;
-	Vec3 v = in.screenPos - in.anchorPos;
-	float dh = sqrtf(v.x * v.x + v.z * v.z);
-	if (dh < 0.3f)
-		dh = 0.3f;
-	float screenYaw = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
-	float centerPitch = atan2f(v.y, dh);
-	// Bas du cadre et bords latéraux, vus du point d'ancrage
-	float bottomPitch = atan2f(v.y - in.dispH * 0.5f - 0.10f * in.dispW, dh);
-	float sideYaw = atan2f(in.dispW * 0.60f, dh);
-	auto halfAngle = [](float halfSize, float dist) { return atan2f(halfSize, dist); };
+	// Tout est dans le plan de l'écran, comme un seul grand tableau de bord : le doigt passe d'une
+	// fenêtre à l'autre sans décalage. Unités : fractions de la largeur de l'image entière.
+	const float viewH = kSplitViewHeight, viewW = viewH * 176.0f / 144.0f, viewY = kSplitViewLift;
+	const float frame = 0.092f * viewW, top = viewY + viewH * 0.5f, bottom = viewY - viewH * 0.5f;
+	auto set = [&](int id, float x, float y, float scale) { placement[id] = {x, y, 0.0f, scale}; };
 	auto halfW = [](int id, float scale) { return kSources[id].w * scale * 0.5f; };
-	auto halfH = [](int id, float scale) { return kSources[id].h * pixelAspect(id) * scale * 0.5f; };
+	auto halfH = [](int id, float scale) { return kSources[id].h * 1.2f * scale * 0.5f; };
 
-	// Sous l'écran, à portée de main, inclinés vers le visage : le groupe puis l'inventaire.
-	UiPlacement &party = placement[kPanelParty];
-	party.dist = 0.70f;
-	party.scale = 0.0021f;
-	party.yaw = screenYaw;
-	party.pitch = bottomPitch - 2.0f * deg - halfAngle(halfH(kPanelParty, party.scale), party.dist);
-	if (party.pitch < -50.0f * deg)
-		party.pitch = -50.0f * deg;
-	UiPlacement &inv = placement[kPanelInventory];
-	inv.dist = 0.66f;
-	inv.scale = 0.0020f;
-	inv.yaw = screenYaw;
-	inv.pitch = party.pitch - halfAngle(halfH(kPanelParty, party.scale), party.dist) - 3.4f * deg - halfAngle(halfH(kPanelInventory, inv.scale), inv.dist);
-
-	// À gauche de l'écran : le parchemin des sorts, et dessous les commandes.
-	UiPlacement &spells = placement[kPanelSpells];
-	spells.dist = 0.95f;
-	spells.scale = 0.0026f;
-	spells.yaw = screenYaw + sideYaw + 6.0f * deg + halfAngle(halfW(kPanelSpells, spells.scale), spells.dist);
-	spells.pitch = centerPitch - 3.0f * deg;
-	UiPlacement &ctl = placement[kPanelControls];
-	ctl.dist = 0.95f;
-	ctl.scale = 0.0026f;
-	ctl.yaw = spells.yaw;
-	ctl.pitch = spells.pitch - halfAngle(halfH(kPanelSpells, spells.scale), spells.dist) - 3.5f * deg - halfAngle(halfH(kPanelControls, ctl.scale), ctl.dist);
-
-	// À droite : la boussole, et dessous l'atlas.
-	UiPlacement &compass = placement[kPanelCompass];
-	compass.dist = 0.95f;
-	compass.scale = 0.0034f;
-	compass.yaw = screenYaw - sideYaw - 6.0f * deg - halfAngle(halfW(kPanelCompass, compass.scale), compass.dist);
-	compass.pitch = centerPitch - 3.0f * deg;
-	UiPlacement &atlas = placement[kPanelAtlas];
-	atlas.dist = 0.85f;
-	atlas.scale = 0.0015f;
-	atlas.yaw = compass.yaw - 10.0f * deg;
-	atlas.pitch = compass.pitch - halfAngle(halfH(kPanelCompass, compass.scale), compass.dist) - 3.5f * deg - halfAngle(halfH(kPanelAtlas, atlas.scale), atlas.dist);
+	// À gauche : le parchemin des sorts, et dessous les commandes.
+	const float sSpells = 0.0036f, sCtl = 0.0028f;
+	float xl = -(viewW * 0.5f + frame + 0.035f + halfW(kPanelSpells, sSpells));
+	set(kPanelSpells, xl, top - halfH(kPanelSpells, sSpells), sSpells);
+	set(kPanelControls, xl, top - 2.0f * halfH(kPanelSpells, sSpells) - 0.05f - halfH(kPanelControls, sCtl), sCtl);
+	// À droite : la colonne de la boussole.
+	const float sCompass = 0.0038f;
+	set(kPanelCompass, viewW * 0.5f + frame + 0.035f + halfW(kPanelCompass, sCompass), top - halfH(kPanelCompass, sCompass), sCompass);
+	// Dessous : le groupe, puis l'inventaire.
+	const float sRow = 0.0026f;
+	float yParty = bottom - frame - 0.045f - halfH(kPanelParty, sRow);
+	set(kPanelParty, 0.0f, yParty, sRow);
+	set(kPanelInventory, 0.0f, yParty - halfH(kPanelParty, sRow) - 0.040f - halfH(kPanelInventory, sRow), sRow);
 
 	// Le clavier vient se poser devant soi, par-dessus le reste.
-	UiPlacement &kb = placement[kPanelKeyboard];
-	kb.dist = 0.58f;
-	kb.scale = 0.0011f;
-	kb.yaw = screenYaw;
-	kb.pitch = -29.0f * deg;
+	Vec3 v = in.basePos - in.anchorPos;
+	float screenYaw = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
+	placement[kPanelKeyboard] = {screenYaw, -29.0f * 3.14159265f / 180.0f, 0.58f, 0.0011f};
 	placed = true;
 }
+
+namespace {
+
+// Garde un panneau dans la bibliothèque : au-dessus du plancher et de la table, devant les murs.
+Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
+	Quat q = quatYaw(in.roomYaw);
+	Vec3 p = rotate(conjugate(q), c - in.roomPos);
+	float mx = fmaxf(0.0f, kRoomHalfX - 0.40f - hw * 0.8f);
+	p.x = clampf(p.x, -mx, mx);
+	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
+	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
+	if (fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
+		lo = kTableTop + hh + 0.03f;
+	if (hi < lo)
+		hi = lo;
+	p.y = clampf(p.y, lo, hi);
+	return rotate(q, p) + in.roomPos;
+}
+
+} // namespace
 
 void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	out = UiFrameOutput();
@@ -304,13 +291,14 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	bool visible[kUiPanelCount];
 	for (int i = 0; i <= kPanelCompass; i++)
 		visible[i] = placed && in.split;
-	visible[kPanelAtlas] = placed && in.atlasVisible && in.atlasTexture != 0;
 	visible[kPanelKeyboard] = placed && in.keyboardOpen;
 
 	Vec3 screenR = rotate(in.screenRot, {1, 0, 0}), screenU = rotate(in.screenRot, {0, 1, 0}), screenN = rotate(in.screenRot, {0, 0, 1});
+	Quat screenInv = conjugate(in.screenRot);
 	float screenDist = length(in.screenPos - in.anchorPos);
 	if (screenDist < 0.3f)
 		screenDist = 0.3f;
+	const float fullW = in.fullW > 0.05f ? in.fullW : 0.05f;
 
 	// --- 1. Poignée tenue : l'objet suit le rayon du doigt ---
 	if (d->drag != -1) {
@@ -327,35 +315,60 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenDragging = true;
 				out.screenCenter = c;
 				out.screenZoom = expf(in.stickX * 0.9f * in.dt);
-			} else {
+			} else if (d->drag == kPanelKeyboard) {
 				UiPlacement &pl = placement[d->drag];
 				Vec3 v = c - in.anchorPos;
-				pl.dist = clampf(length(v), 0.20f, 6.0f);
-				pl.pitch = clampf(asinf(clampf(v.y / pl.dist, -1.0f, 1.0f)), -1.35f, 1.35f);
-				pl.yaw = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
+				pl.c = clampf(length(v), 0.20f, 6.0f);
+				pl.b = clampf(asinf(clampf(v.y / pl.c, -1.0f, 1.0f)), -1.35f, 1.35f);
+				pl.a = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
 				pl.scale = clampf(pl.scale * expf(in.stickX * 0.9f * in.dt), 0.0005f, 0.02f);
+			} else {
+				UiPlacement &pl = placement[d->drag];
+				Vec3 l = rotate(screenInv, c - in.basePos) * (1.0f / fullW);
+				pl.a = clampf(l.x, -6.0f, 6.0f);
+				pl.b = clampf(l.y, -6.0f, 6.0f);
+				pl.c = clampf(l.z, -6.0f, 6.0f);
+				pl.scale = clampf(pl.scale * expf(in.stickX * 0.9f * in.dt), 0.0004f, 0.02f);
 			}
 		}
 	}
 
 	// --- 2. Pose des panneaux et de leurs poignées ---
 	Quad content[kUiPanelCount], handle[kUiPanelCount + 1];
+	float panelDist[kUiPanelCount];
 	for (int i = 0; i < kUiPanelCount; i++) {
 		const UiPlacement &pl = placement[i];
-		Vec3 dir = directionFor(in.anchorYaw + pl.yaw, pl.pitch);
 		Quad &q = content[i];
-		q.c = in.anchorPos + dir * pl.dist;
-		Vec3 n = dir * -1.0f;
+		float scale;
+		if (i == kPanelKeyboard) {
+			q.c = in.anchorPos + directionFor(in.anchorYaw + pl.a, pl.b) * pl.c;
+			scale = pl.scale;
+		} else {
+			q.c = in.basePos + rotate(in.screenRot, Vec3{pl.a, pl.b, pl.c} * fullW);
+			scale = pl.scale * fullW;
+		}
+		q.hw = kSources[i].w * scale * 0.5f;
+		q.hh = kSources[i].h * pixelAspect(i) * scale * 0.5f;
+		if (in.roomClamp)
+			q.c = clampToRoom(in, q.c, q.hw, q.hh);
+		// Chaque panneau est tourné vers le joueur.
+		Vec3 v = q.c - in.anchorPos;
+		float dist = length(v);
+		if (dist < 0.15f) {
+			q.c = in.anchorPos + (dist > 1e-4f ? v * (0.15f / dist) : Vec3{0, 0, -0.15f});
+			v = q.c - in.anchorPos;
+			dist = 0.15f;
+		}
+		panelDist[i] = dist;
+		Vec3 n = v * (-1.0f / dist);
 		Vec3 r = cross({0, 1, 0}, n);
 		float rl = length(r);
 		q.r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
 		q.u = cross(n, q.r);
-		q.hw = kSources[i].w * pl.scale * 0.5f;
-		q.hh = kSources[i].h * pixelAspect(i) * pl.scale * 0.5f;
 		Quad &hq = handle[i];
-		float border = clampf(0.012f * pl.dist, 0.004f, 0.012f);
-		hq.hh = clampf(0.013f * pl.dist, 0.006f, 0.05f);
-		hq.hw = fminf(q.hw, clampf(0.060f * pl.dist, 0.02f, 0.25f));
+		float border = clampf(0.012f * dist, 0.004f, 0.012f);
+		hq.hh = clampf(0.017f * dist, 0.008f, 0.06f);
+		hq.hw = fminf(q.hw, clampf(0.10f * dist, 0.03f, 0.35f));
 		hq.r = q.r;
 		hq.u = q.u;
 		hq.c = q.c + q.u * (q.hh + border + hq.hh + 0.002f);
@@ -365,8 +378,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		Quad &hq = handle[kUiPanelCount];
 		hq.r = screenR;
 		hq.u = screenU;
-		hq.hh = clampf(0.011f * screenDist, 0.006f, 0.05f);
-		hq.hw = clampf(0.055f * screenDist, 0.02f, 0.25f);
+		hq.hh = clampf(0.020f * screenDist, 0.008f, 0.07f);
+		hq.hw = clampf(0.11f * screenDist, 0.03f, 0.40f);
 		float top = in.crt ? 0.50f * in.dispW : in.dispH * 0.5f + 0.165f * in.dispW;
 		hq.c = in.screenPos + screenU * (top + hq.hh) + screenN * (in.crt ? -0.02f * in.dispW : 0.02f * in.dispW);
 	}
@@ -375,6 +388,11 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	enum { kHitNone, kHitHandle, kHitPanel, kHitScreen };
 	int hitKind = kHitNone, hitIndex = -1;
 	float bestT = 1e9f, hx = 0, hy = 0;
+	// Repli : quand le doigt passe juste à côté d'une fenêtre, on prend la plus proche.
+	int nearKind = kHitNone, nearIndex = -1;
+	float nearExcess = 1e9f, nearT = 0, nearX = 0, nearY = 0;
+	bool screenHitOk = false;
+	float screenU01 = 0, screenV01 = 0, screenZ = 0;
 	d->hotKey = -1;
 	if (in.aimValid && d->drag == -1) {
 		for (int i = 0; i <= kUiPanelCount; i++) {
@@ -382,7 +400,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				continue;
 			float t, x, y;
 			// Zone de prise un peu plus généreuse que la poignée dessinée
-			if (rayQuad(in.tip, in.dir, handle[i], t, x, y) && t < bestT && fabsf(x) <= 1.25f && fabsf(y) <= 1.9f) {
+			if (rayQuad(in.tip, in.dir, handle[i], t, x, y) && t < bestT && fabsf(x) <= 1.15f && fabsf(y) <= 1.35f) {
 				bestT = t; hitKind = kHitHandle; hitIndex = i; hx = x; hy = y;
 			}
 		}
@@ -390,15 +408,24 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			if (!visible[i])
 				continue;
 			float t, x, y;
-			if (rayQuad(in.tip, in.dir, content[i], t, x, y) && t < bestT && fabsf(x) <= 1.04f && fabsf(y) <= 1.04f) {
-				bestT = t; hitKind = kHitPanel; hitIndex = i; hx = clampf(x, -1.0f, 1.0f); hy = clampf(y, -1.0f, 1.0f);
+			if (!rayQuad(in.tip, in.dir, content[i], t, x, y))
+				continue;
+			if (fabsf(x) <= 1.0f && fabsf(y) <= 1.0f) {
+				if (t < bestT) {
+					bestT = t; hitKind = kHitPanel; hitIndex = i; hx = x; hy = y;
+				}
+			} else {
+				float e = fmaxf((fabsf(x) - 1.0f) * content[i].hw, (fabsf(y) - 1.0f) * content[i].hh);
+				if (e < 0.05f * t && e < nearExcess) {
+					nearExcess = e; nearKind = kHitPanel; nearIndex = i; nearT = t;
+					nearX = clampf(x, -1.0f, 1.0f); nearY = clampf(y, -1.0f, 1.0f);
+				}
 			}
 		}
 		// L'écran principal (la dalle du moniteur cathodique est bombée : on affine le point d'impact)
 		{
-			Quat inv = conjugate(in.screenRot);
-			Vec3 origin = rotate(inv, in.tip - in.screenPos);
-			Vec3 dir = rotate(inv, in.dir);
+			Vec3 origin = rotate(screenInv, in.tip - in.screenPos);
+			Vec3 dir = rotate(screenInv, in.dir);
 			if (dir.z < -1e-4f && origin.z > 0.0f) {
 				float zPlane = 0.0f, t = 0.0f;
 				Vec3 hit = origin;
@@ -409,16 +436,22 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 						zPlane = in.dispW * crtGlassZ(hit.x / in.dispW, hit.y / in.dispW);
 				}
 				float u = hit.x / in.dispW + 0.5f, v = 0.5f - hit.y / in.dispH;
-				if (t < bestT && u > -0.12f && u < 1.12f && v > -0.12f && v < 1.12f) {
-					bestT = t; hitKind = kHitScreen; hitIndex = 0;
-					u = clampf(u, 0.0f, 1.0f);
-					v = clampf(v, 0.0f, 1.0f);
-					out.gu = (in.cropX + in.cropW * u) / 320.0f;
-					out.gv = (in.cropY + in.cropH * v) / 200.0f;
-					Vec3 local{(u - 0.5f) * in.dispW, (0.5f - v) * in.dispH, zPlane + 0.004f};
-					out.hit = rotate(in.screenRot, local) + in.screenPos;
+				float e = fmaxf(fmaxf(-u, u - 1.0f) * in.dispW, fmaxf(-v, v - 1.0f) * in.dispH);
+				screenU01 = clampf(u, 0.0f, 1.0f);
+				screenV01 = clampf(v, 0.0f, 1.0f);
+				screenZ = zPlane;
+				if (e <= 0.0f) {
+					if (t < bestT) {
+						bestT = t; hitKind = kHitScreen; hitIndex = 0;
+					}
+				} else if (e < 0.05f * t && e < nearExcess) {
+					nearExcess = e; nearKind = kHitScreen; nearIndex = 0; nearT = t;
 				}
+				screenHitOk = true;
 			}
+		}
+		if (hitKind == kHitNone && nearKind != kHitNone) {
+			hitKind = nearKind; hitIndex = nearIndex; bestT = nearT; hx = nearX; hy = nearY;
 		}
 	}
 
@@ -427,12 +460,17 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		handleGlow[i] = 0.0f;
 	if (d->drag != -1)
 		handleGlow[d->drag == Impl::kScreenTarget ? kUiPanelCount : d->drag] = 1.0f;
+	out.pointerLong = hitKind != kHitScreen && hitKind != kHitPanel;
 
-	if (hitKind == kHitScreen) {
+	if (hitKind == kHitScreen && screenHitOk) {
 		out.pointerValid = true;
 		out.buttonsToGame = true;
 		out.hitValid = true;
 		out.hitRadius = 0.0f;
+		out.gu = (in.cropX + in.cropW * screenU01) / 320.0f;
+		out.gv = (in.cropY + in.cropH * screenV01) / 200.0f;
+		Vec3 local{(screenU01 - 0.5f) * in.dispW, (0.5f - screenV01) * in.dispH, screenZ + 0.004f};
+		out.hit = rotate(in.screenRot, local) + in.screenPos;
 	} else if (hitKind == kHitHandle) {
 		handleGlow[hitIndex] = 0.7f;
 		const Quad &hq = handle[hitIndex];
@@ -441,7 +479,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		out.hit = p;
 		out.hitRight = hq.r;
 		out.hitUp = hq.u;
-		out.hitRadius = 0.010f * bestT;
+		out.hitRadius = 0.016f * bestT;
 		if (in.triggerPressed) {
 			d->drag = hitIndex == kUiPanelCount ? Impl::kScreenTarget : hitIndex;
 			d->grabDist = bestT;
@@ -454,8 +492,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenCenter = in.screenPos;
 			}
 		}
-		(void)hx;
-		(void)hy;
 	} else if (hitKind == kHitPanel) {
 		const Quad &q = content[hitIndex];
 		out.hitValid = true;
@@ -492,13 +528,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 					}
 				}
 			}
-		} else if (hitIndex == kPanelAtlas) {
-			if (in.atlasLive) {
-				out.pointerValid = true;
-				out.buttonsToGame = true;
-				out.gu = u;
-				out.gv = v;
-			}
 		} else {
 			const Source &src = kSources[hitIndex];
 			out.pointerValid = true;
@@ -524,7 +553,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			p.up = q.u;
 			p.halfW = q.hw;
 			p.halfH = q.hh;
-			p.border = clampf(0.012f * placement[i].dist, 0.004f, 0.012f);
+			p.border = clampf(0.012f * panelDist[i], 0.004f, 0.012f);
 			if (i == kPanelKeyboard) {
 				p.texture = d->kbTex;
 				p.texW = kKbW;
@@ -537,10 +566,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 					p.hot[2] = (float)((key.col + key.span) * kCellW) / (float)kKbW;
 					p.hot[3] = (float)((key.row + 1) * kCellH) / (float)kKbH;
 				}
-			} else if (i == kPanelAtlas) {
-				p.texture = in.atlasTexture;
-				p.texW = in.atlasW;
-				p.texH = in.atlasH;
 			} else {
 				p.u0 = src.x / 320.0f;
 				p.u1 = (src.x + src.w) / 320.0f;
@@ -548,30 +573,20 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				p.v1 = (src.y + src.h) / 200.0f;
 			}
 		}
-		if (nh < SceneState::kMaxHandles) {
-			SceneState::Handle &h = scene.handles[nh++];
-			const Quad &hq = handle[i];
-			h.visible = true;
-			h.center = hq.c;
-			h.right = hq.r;
-			h.up = hq.u;
-			h.halfW = hq.hw;
-			h.halfH = hq.hh;
-			h.glow = handleGlow[i];
-			h.alpha = 0.75f + 0.25f * handleGlow[i];
-		}
 	}
-	if (nh < SceneState::kMaxHandles) {
+	for (int i = 0; i <= kUiPanelCount; i++) {
+		if ((i < kUiPanelCount && !visible[i]) || nh >= SceneState::kMaxHandles)
+			continue;
 		SceneState::Handle &h = scene.handles[nh++];
-		const Quad &hq = handle[kUiPanelCount];
+		const Quad &hq = handle[i];
 		h.visible = true;
 		h.center = hq.c;
 		h.right = hq.r;
 		h.up = hq.u;
 		h.halfW = hq.hw;
 		h.halfH = hq.hh;
-		h.glow = handleGlow[kUiPanelCount];
-		h.alpha = 0.75f + 0.25f * handleGlow[kUiPanelCount];
+		h.glow = handleGlow[i];
+		h.alpha = 0.8f + 0.2f * handleGlow[i];
 	}
 }
 

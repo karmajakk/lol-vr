@@ -12,6 +12,8 @@ const float kRoomHalfX = 2.7f;
 const float kRoomFrontZ = -3.5f;
 const float kRoomBackZ = 2.7f;
 const float kRoomHeight = 3.3f;
+// Table de lecture devant le joueur (repère de la pièce)
+const float kTableZ = -0.62f, kTableHalfW = 0.80f, kTableHalfD = 0.28f, kTableTop = 0.66f;
 
 enum LightKind { kLightWarm = 0, kLightWindow = 1, kLightFire = 2 };
 
@@ -52,6 +54,9 @@ struct RoomOptions {
 	float windowAspect = 1.6f; // largeur / hauteur
 	bool portraitImage = false;
 	float portraitAspect = 1.5f;
+	// Deux autres tableaux au choix (mur de gauche, mur du fond)
+	bool paintingImage[2] = {false, false};
+	float paintingAspect[2] = {1.3f, 1.3f};
 };
 
 // Construit la pièce. `solid` reçoit la géométrie opaque, `alpha` les parties translucides (vitrail).

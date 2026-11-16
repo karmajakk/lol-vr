@@ -76,6 +76,7 @@ struct SceneState {
 	// Lueur du pointeur : repère du plan touché (par défaut, celui de l'écran).
 	Vec3 hitRight = {0, 0, 0}, hitUp = {0, 0, 0};
 	float hitRadius = 0.0f; // 0 = valeurs par défaut
+	bool pointerLong = false; // rayon entier (le doigt ne vise ni l'écran ni un panneau)
 };
 
 class Scene {
@@ -86,7 +87,7 @@ public:
 	// srgbTarget : vrai si l'image de destination est au format sRGB.
 	bool init(bool srgbTarget);
 	// Image fournie par le joueur. slot 0 : vue par la fenêtre ; slot 1 : portrait au-dessus de la
-	// cheminée. rgba : w x h pixels, première ligne en haut. À appeler après init(), sur le fil OpenGL.
+	// cheminée ; slots 2 et 3 : deux autres tableaux. rgba : w x h pixels, première ligne en haut. À appeler après init(), sur le fil OpenGL.
 	void setImage(int slot, const unsigned char *rgba, int w, int h);
 	// À appeler une fois par image, avant render() : thèmes, objets animés.
 	void prepare(const SceneState &state);

@@ -223,6 +223,8 @@ int main(int argc, char **argv) {
 	}
 	loadDecor(scene, 0, "fenetre");
 	loadDecor(scene, 1, "portrait");
+	loadDecor(scene, 2, "tableau1");
+	loadDecor(scene, 3, "tableau2");
 	st.time = 3.0; // après le fondu d'apparition
 
 	// Joueur assis à la table : yeux à 1,20 m.
@@ -243,7 +245,8 @@ int main(int argc, char **argv) {
 		{"pt_frame", kEnvPassthroughFrame, kThemeKeep, seat, 0, 0, 1.15f, true, 0.0f, 0.0f},
 		{"pt_crt", kEnvPassthroughCrt, kThemeKeep, seat, 0, -8, 1.15f, true, 0.0f, 0.0f},
 		{"pt_crt_side", kEnvPassthroughCrt, kThemeKeep, {1.1f, 1.45f, -0.5f}, 38, -14, 0.8f, false, 0, 0},
-		{"split_front", kEnvLibrary, kThemeKeep, seat, 0, -8, 1.25f, true, 0.0f, 0.0f, 1},
+		{"split_front", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.25f, true, 0.0f, 0.0f, 1},
+		{"split_wide", kEnvLibrary, kThemeKeep, {0, 1.20f, 0.9f}, 0, 2, 1.25f, false, 0.0f, 0.0f, 1},
 		{"split_down", kEnvLibrary, kThemeKeep, seat, 0, -32, 1.0f, true, 0.0f, 0.0f, 1},
 		{"split_left", kEnvLibrary, kThemeKeep, seat, 42, -10, 1.0f, false, 0, 0, 1},
 		{"split_right", kEnvLibrary, kThemeKeep, seat, -42, -12, 1.0f, false, 0, 0, 1},
@@ -251,56 +254,92 @@ int main(int argc, char **argv) {
 		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
 
-	// --- Essai de l'interface sans casque : pointage, poignées, clavier ---
+	// --- Essai de l'interface sans casque : pointage, poignées, clavier, butées ---
 	if (argc > 2 && !strcmp(argv[2], "uitest")) {
 		int failures = 0;
 		auto check = [&](bool ok, const char *what) {
-			printf("%-58s %s\n", what, ok ? "ok" : "ÉCHEC");
+			printf("%-62s %s\n", what, ok ? "ok" : "ÉCHEC");
 			failures += ok ? 0 : 1;
 		};
+		const float fullW = 2.4f;
 		UiFrameInput in;
 		in.anchorPos = seat;
-		in.screenPos = {0, 1.30f, -2.2f};
-		in.dispH = 1.8f;
-		in.dispW = 1.8f * 176.0f / 144.0f;
+		in.basePos = {0, 1.30f, -2.2f};
+		in.fullW = fullW;
+		in.screenPos = in.basePos + Vec3{0, fullW * kSplitViewLift, 0};
+		in.dispH = fullW * kSplitViewHeight;
+		in.dispW = in.dispH * 176.0f / 144.0f;
 		in.cropX = 112; in.cropY = 0; in.cropW = 176; in.cropH = 120;
 		in.split = true;
+		in.roomClamp = true;
 		in.aimValid = true;
 		in.tip = {0.2f, 0.95f, -0.3f};
 		ui.resetLayout(in);
 		UiFrameOutput o;
 		SceneState tmp;
 		auto aimAt = [&](Vec3 target) { in.dir = normalize(target - in.tip); };
-		auto panelCenter = [&](int id) {
-			const UiPlacement &pl = ui.placement[id];
-			return in.anchorPos + Vec3{-sinf(pl.yaw) * cosf(pl.pitch), sinf(pl.pitch), -cosf(pl.yaw) * cosf(pl.pitch)} * pl.dist;
-		};
+		// Centre et poignée d'un panneau, tels que la scène les reçoit
+		auto panel = [&](int index) { ui.update(in, o, tmp); return tmp.panels[index]; };
 		// 1. Le centre de l'écran donne le centre de la vue du donjon
 		aimAt(in.screenPos);
 		ui.update(in, o, tmp);
-		check(o.pointerValid && fabsf(o.gu * 320 - 200) < 1.5f && fabsf(o.gv * 200 - 60) < 1.5f && o.buttonsToGame, "écran : centre de la vue du donjon (200, 60)");
+		check(o.pointerValid && fabsf(o.gu * 320 - 200) < 1.5f && fabsf(o.gv * 200 - 60) < 1.5f && o.buttonsToGame && !o.pointerLong, "écran : centre de la vue du donjon (200, 60)");
 		// 2. Le centre de chaque panneau donne le centre de sa zone de l'image
 		const float want[5][2] = {{201.5f, 150}, {201.5f, 189}, {56, 64}, {42, 164}, {304, 61}};
-		const char *names[5] = {"panneau du groupe", "panneau de l'inventaire", "panneau des sorts", "panneau des commandes", "panneau de la boussole"};
+		const char *names[5] = {"fenêtre du groupe", "fenêtre de l'inventaire", "fenêtre des sorts", "fenêtre des commandes", "fenêtre de la boussole"};
 		for (int i = 0; i < 5; i++) {
-			aimAt(panelCenter(i));
+			aimAt(panel(i).center);
 			ui.update(in, o, tmp);
 			check(o.pointerValid && fabsf(o.gu * 320 - want[i][0]) < 1.5f && fabsf(o.gv * 200 - want[i][1]) < 1.5f && o.buttonsToGame, names[i]);
 		}
-		// 3. Les panneaux sont bien visibles dans la scène, avec leurs poignées
-		int np = 0, nh = 0;
-		for (int i = 0; i < SceneState::kMaxPanels; i++) np += tmp.panels[i].visible ? 1 : 0;
-		for (int i = 0; i < SceneState::kMaxHandles; i++) nh += tmp.handles[i].visible ? 1 : 0;
-		check(np == 5 && nh == 6, "5 panneaux et 6 poignées (dont celle de l'écran)");
-		// 4. Poignée de l'inventaire : on l'attrape, on la déplace, on la lâche
+		// 3. Tout est dans le plan de l'écran, au-dessus du plancher, sans chevauchement vertical
+		{
+			bool planar = true, above = true;
+			for (int i = 0; i < 5; i++) {
+				SceneState::Panel p = panel(i);
+				planar = planar && fabsf(p.center.z - in.basePos.z) < 0.02f;
+				above = above && p.center.y - p.halfH > 0.02f;
+			}
+			SceneState::Panel party = panel(0), inv = panel(1);
+			check(planar, "les cinq fenêtres sont dans le plan de l'écran");
+			check(above, "aucune fenêtre ne descend sous le plancher");
+			check(party.center.y - party.halfH > inv.center.y + inv.halfH + 0.05f, "le groupe et l'inventaire ne se chevauchent pas");
+			check(party.center.y + party.halfH < in.screenPos.y - in.dispH * 0.5f - 0.10f, "le groupe est sous le cadre de l'écran");
+		}
+		// 4. Bas de l'écran : le rayon de la main arrive bien sur l'écran (rien devant), puis glisse
+		//    vers le groupe et l'inventaire sans trou
+		{
+			aimAt(in.screenPos + Vec3{0.3f, -in.dispH * 0.5f + 0.03f, 0});
+			ui.update(in, o, tmp);
+			check(o.pointerValid && o.gv * 200 > 110 && o.gv * 200 < 120 && o.gu * 320 > 112 && o.gu * 320 < 288, "bas de l'écran : on vise bien le sol de la vue du donjon");
+			SceneState::Panel party = panel(0);
+			int valid = 0, total = 0;
+			float y0 = in.screenPos.y - in.dispH * 0.5f, y1 = party.center.y + party.halfH;
+			for (float y = y0; y >= y1; y -= 0.01f, total++) {
+				aimAt({0.3f, y, in.basePos.z});
+				ui.update(in, o, tmp);
+				valid += (o.pointerValid || o.pointerLong) ? 1 : 0;
+			}
+			aimAt({0.3f, y1 + 0.02f, in.basePos.z});
+			ui.update(in, o, tmp);
+			check(valid == total, "entre l'écran et le groupe : toujours un retour visuel");
+		}
+		// 5. Juste à côté d'une fenêtre : le pointeur s'y accroche
+		{
+			SceneState::Panel inv = panel(1);
+			aimAt(inv.center + inv.right * (inv.halfW + 0.04f));
+			ui.update(in, o, tmp);
+			check(o.pointerValid && fabsf(o.gu * 320 - 320) < 2.0f, "juste à droite de l'inventaire : accroché à son bord");
+		}
+		// 6. Poignée de l'inventaire : on l'attrape, on la déplace, on la lâche
 		{
 			int id = kPanelInventory;
+			ui.update(in, o, tmp);
+			Vec3 handle = tmp.handles[id].center;
 			UiPlacement before = ui.placement[id];
-			// La poignée est juste au-dessus du panneau
-			Vec3 c = panelCenter(id);
-			float hh = 22 * 1.2f * before.scale * 0.5f;
-			Vec3 handle = c + Vec3{0, cosf(before.pitch), sinf(before.pitch)} * (hh + 0.012f * before.dist + 0.013f * before.dist);
 			aimAt(handle);
+			ui.update(in, o, tmp);
+			check(o.pointerLong && o.hitValid, "poignée visée : rayon entier jusqu'à la poignée");
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
 			check(o.grabbed && o.dragging && !o.buttonsToGame, "poignée de l'inventaire : prise");
@@ -308,23 +347,35 @@ int main(int argc, char **argv) {
 			aimAt(handle + Vec3{0.25f, 0.10f, 0});
 			ui.update(in, o, tmp);
 			UiPlacement after = ui.placement[id];
-			check(o.dragging && after.yaw < before.yaw - 0.1f && after.pitch > before.pitch + 0.05f, "le panneau suit le doigt (vers la droite et le haut)");
+			check(o.dragging && after.a > before.a + 0.05f && after.b > before.b + 0.02f, "la fenêtre suit le doigt (vers la droite et le haut)");
 			in.stickX = 1.0f; in.dt = 0.5f;
 			ui.update(in, o, tmp);
-			check(ui.placement[id].scale > after.scale * 1.2f, "joystick à droite : le panneau grandit");
-			in.stickX = 0; in.stickY = 1.0f;
-			float d0 = ui.placement[id].dist;
+			check(ui.placement[id].scale > after.scale * 1.2f, "joystick à droite : la fenêtre grandit");
+			in.stickX = 0; in.stickY = -1.0f;
 			ui.update(in, o, tmp);
-			check(ui.placement[id].dist > d0 * 1.2f, "joystick vers l'avant : le panneau s'éloigne");
+			check(ui.placement[id].c > 0.2f, "joystick vers soi : la fenêtre se rapproche");
 			in.stickY = 0; in.dt = 0.016f;
 			in.triggerDown = false;
 			ui.update(in, o, tmp);
 			check(o.released && o.layoutChanged && !o.dragging, "poignée lâchée : disposition à mémoriser");
+		}
+		// 7. Butées : une fenêtre poussée sous la table ou sous le plancher est remontée
+		{
+			ui.placement[kPanelParty] = {0.0f, (0.30f - 1.30f) / fullW, (2.2f - 0.62f) / fullW, 0.0026f};
+			SceneState::Panel p = panel(0);
+			check(p.center.y - p.halfH >= kTableTop, "fenêtre placée dans la table : remontée au-dessus du plateau");
+			ui.placement[kPanelParty] = {0.0f, -3.0f / fullW, 0.0f, 0.0026f};
+			p = panel(0);
+			check(p.center.y - p.halfH > 0.0f, "fenêtre placée sous le plancher : remontée");
+			ui.placement[kPanelSpells].a = -5.0f;
+			p = panel(2);
+			check(p.center.x > -kRoomHalfX + 0.3f, "fenêtre placée dans le mur : ramenée dans la pièce");
 			ui.resetLayout(in);
 		}
-		// 5. Poignée de l'écran
+		// 8. Poignée de l'écran
 		{
-			Vec3 handle = in.screenPos + Vec3{0, in.dispH * 0.5f + 0.165f * in.dispW + 0.011f * 2.2f, 0.02f * in.dispW};
+			ui.update(in, o, tmp);
+			Vec3 handle = tmp.handles[5].center;
 			aimAt(handle);
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
@@ -336,14 +387,13 @@ int main(int argc, char **argv) {
 			in.triggerDown = false;
 			ui.update(in, o, tmp);
 		}
-		// 6. Clavier : la touche « q », puis Maj + « a »
+		// 9. Clavier : la touche « q », puis Maj + « a »
 		{
 			in.keyboardOpen = true;
-			const UiPlacement &kb = ui.placement[kPanelKeyboard];
-			Vec3 c = panelCenter(kPanelKeyboard);
-			Vec3 up{0, cosf(kb.pitch), sinf(kb.pitch)}, right{1, 0, 0};
+			ui.update(in, o, tmp);
+			SceneState::Panel kb = tmp.panels[5];
 			auto keyPos = [&](float col, float row) {
-				return c + right * ((col - 5.5f) * 46 * kb.scale) + up * ((3.0f - row) * 40 * kb.scale);
+				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((3.0f - row) / 3.0f * kb.halfH);
 			};
 			auto press = [&](float col, float row) {
 				aimAt(keyPos(col, row));
@@ -363,20 +413,22 @@ int main(int argc, char **argv) {
 			check(k.keyCount == 1 && k.keys[0] == 13, "clavier : Entrée");
 			k = press(1.0f, 0.5f);
 			check(k.action == kUiActionToggleFire, "clavier : bouton du feu");
-			k = press(10.0f, 0.5f);
-			check(k.action == kUiActionCloseKeyboard, "clavier : bouton Fermer");
 			in.keyboardOpen = false;
 		}
-		// 7. Image entière : pas de panneaux, le coin de l'écran donne le coin de l'image
+		// 10. Image entière : pas de fenêtres, le coin de l'écran donne le coin de l'image
 		{
 			in.split = false;
+			in.screenPos = in.basePos;
 			in.dispW = 2.4f; in.dispH = 1.8f;
 			in.cropX = 0; in.cropY = 0; in.cropW = 320; in.cropH = 200;
 			aimAt(in.screenPos + Vec3{-1.19f, 0.89f, 0});
 			ui.update(in, o, tmp);
 			int n = 0;
 			for (int i = 0; i < SceneState::kMaxPanels; i++) n += tmp.panels[i].visible ? 1 : 0;
-			check(n == 0 && o.pointerValid && o.gu * 320 < 3.0f && o.gv * 200 < 3.0f, "image entière : aucun panneau, coin haut gauche");
+			check(n == 0 && o.pointerValid && o.gu * 320 < 3.0f && o.gv * 200 < 3.0f, "image entière : aucune fenêtre, coin haut gauche");
+			aimAt(in.screenPos + Vec3{2.2f, 0, 0});
+			ui.update(in, o, tmp);
+			check(!o.pointerValid && o.pointerLong, "loin de l'écran : rayon entier, pas de clic envoyé au jeu");
 		}
 		printf("%s\n", failures ? "ÉCHEC" : "TOUT EST BON");
 		return failures ? 1 : 0;
@@ -405,9 +457,12 @@ int main(int argc, char **argv) {
 		}
 		float rect[4] = {0, 0, 1, 1};
 		float quadW = fullW, quadH = fullW * 0.75f;
+		Vec3 basePos = screenPos;
 		if (split) {
 			rect[0] = 112.0f / 320.0f; rect[1] = 0.0f; rect[2] = 176.0f / 320.0f; rect[3] = 120.0f / 200.0f;
+			quadH = fullW * kSplitViewHeight;
 			quadW = quadH * 176.0f / 144.0f;
+			screenPos.y += fullW * kSplitViewLift;
 		}
 		st.screenPos = screenPos;
 		st.screenWidth = quadW;
@@ -433,8 +488,9 @@ int main(int argc, char **argv) {
 		in.cropX = rect[0] * 320.0f; in.cropY = rect[1] * 200.0f; in.cropW = rect[2] * 320.0f; in.cropH = rect[3] * 200.0f;
 		in.crt = sh.env == kEnvPassthroughCrt;
 		in.split = split;
-		in.atlasVisible = split;
-		in.atlasTexture = game;
+		in.basePos = basePos;
+		in.fullW = fullW;
+		in.roomClamp = sh.env == kEnvLibrary;
 		in.keyboardOpen = sh.mode == 2;
 		in.aimValid = sh.hands;
 		if (sh.hands) {
@@ -456,6 +512,7 @@ int main(int argc, char **argv) {
 		st.hitRight = uo.hitRight;
 		st.hitUp = uo.hitUp;
 		st.hitRadius = uo.hitRadius;
+		st.pointerLong = uo.pointerLong;
 		st.clickPulse = 0.3f;
 		// Changement de thème : attendre la tâche de fond
 		for (int i = 0; i < 4000; i++) {

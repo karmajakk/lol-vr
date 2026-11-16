@@ -649,7 +649,7 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 		for (float z : {wz0 - 0.08f, wz1 + 0.08f})
 			mb.box({-X + 0.02f, (wys + wyr) * 0.5f, z}, {0.035f, (wyr - wys) * 0.5f, 0.08f}, mat(kTexStone, {1.08f, 1.05f, 1.0f}, 0.5f));
 		// Vue extérieure
-		if (opt.windowImage && theme == kThemeKeep) {
+		if (opt.windowImage) {
 			// L'image du joueur, assez proche pour rester nette ; on la centre pour que son
 			// point d'intérêt (aux deux tiers à droite, un peu au-dessus du milieu) soit visible du fauteuil.
 			const float sx = -X - 0.9f, iw = 4.0f, ih = iw / opt.windowAspect;
@@ -799,7 +799,13 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	mb.setTransform(place({-X + 0.012f, 2.02f, 0.70f}, 90.0f));
 	painting(mb, 0.84f, 0.63f, kTexPaintTheme);
 	mb.setTransform(place({-X + 0.012f, 1.85f, 1.72f}, 90.0f));
-	painting(mb, 0.92f, 0.92f, kTexPaintMap);
+	if (opt.paintingImage[0]) {
+		float pw = 0.95f, ph = pw / opt.paintingAspect[0];
+		if (ph > 1.0f) { ph = 1.0f; pw = ph * opt.paintingAspect[0]; }
+		paintingImage(mb, pw, ph, kTexImgPainting1A);
+	} else {
+		painting(mb, 0.92f, 0.92f, kTexPaintMap);
+	}
 	mb.setTransform(place({-1.95f, 0, 0.95f}, 30.0f));
 	globe(mb, info);
 	// Coffre sous la fenêtre
@@ -812,7 +818,13 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	mb.setTransform(place({-0.15f, 0, ZB}, 180.0f));
 	door(mb);
 	mb.setTransform(place({-1.72f, 1.90f, ZB - 0.012f}, 180.0f));
-	painting(mb, 1.10f, 0.80f, kTexPaintCastle);
+	if (opt.paintingImage[1]) {
+		float pw = 1.10f, ph = pw / opt.paintingAspect[1];
+		if (ph > 1.0f) { ph = 1.0f; pw = ph * opt.paintingAspect[1]; }
+		paintingImage(mb, pw, ph, kTexImgPainting2A);
+	} else {
+		painting(mb, 1.10f, 0.80f, kTexPaintCastle);
+	}
 	for (float x : {-0.98f, 0.68f}) {
 		mb.setTransform(place({x, 2.05f, ZB}, 180.0f));
 		sconce(mb, info);

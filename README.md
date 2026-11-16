@@ -60,19 +60,23 @@ simplement le nouvel APK par-dessus l'ancien.
 
 ### Déplacer l'écran et les panneaux
 
-L'écran et chaque panneau portent une petite **barrette de laiton** au-dessus d'eux. Visez-la,
-serrez la gâchette et gardez-la serrée : l'objet suit votre doigt. Pendant que vous le tenez, le
+L'écran et chaque panneau portent une **barrette de laiton** au-dessus d'eux. Dès que le doigt
+quitte l'écran et les panneaux, le rayon du pointeur s'allonge pour montrer où l'on vise.
+Visez la barrette, serrez la gâchette et gardez-la serrée : l'objet suit votre doigt. Pendant que vous le tenez, le
 joystick droit le pousse ou le tire (haut/bas) et le rapetisse ou l'agrandit (gauche/droite).
 Relâchez la gâchette pour le poser. Tout est mémorisé d'une fois à l'autre.
 
 ## L'interface détachée
 
 Pendant l'exploration, l'écran ne montre que la vue du donjon. Le reste de l'interface du jeu est
-réparti sur des panneaux que l'on place où l'on veut : le groupe (messages et portraits),
-l'inventaire, le parchemin des sorts, les commandes (flèches, options, repos), la boussole, et
-l'atlas (la dernière carte consultée ; il apparaît après la première ouverture de la carte).
-On clique sur les panneaux comme sur l'écran. Dans les cinématiques, les menus, la carte et les
-scènes qui occupent toute la largeur, l'image entière revient d'elle-même.
+réparti sur des fenêtres que l'on place où l'on veut : le groupe (messages et portraits),
+l'inventaire, le parchemin des sorts, les commandes (flèches, options, repos) et la boussole.
+Au départ, elles sont toutes dans le plan de l'écran, autour de la vue : le pointeur passe de
+l'une à l'autre sans décalage, ce qui permet de ramasser un objet au sol et de le déposer dans
+l'inventaire. Elles suivent l'écran quand on le déplace ou qu'on change sa taille. Dans la
+bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table.
+Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image
+entière revient d'elle-même.
 
 Le bouton « Panneaux » du clavier (X) rend l'image entière en permanence, et « Tout ranger »
 remet les panneaux à leur place d'origine autour de l'écran.
@@ -88,16 +92,20 @@ remet les panneaux à leur place d'origine autour de l'écran.
 
 ### Vos images dans la bibliothèque (facultatif)
 
-Deux images peuvent être ajoutées dans le dossier `Android/data/com.karmajakk.lolvr/files/decor`
-du casque (PNG ou JPEG) :
+Des images peuvent être ajoutées dans le dossier `Android/data/com.karmajakk.lolvr/files/decor`
+du casque (PNG ou JPEG ; seul le début du nom compte) :
 
-- `fenetre.png` : la vue par la fenêtre (quand le groupe est à Gladstone, et avant la partie) ;
-- `portrait.png` : le tableau au-dessus de la cheminée.
+- `fenetre.png` : la vue par la fenêtre ;
+- `portrait.png` : le tableau au-dessus de la cheminée ;
+- `tableau1.png`, `tableau2.png` : deux autres tableaux (mur de gauche, mur du fond).
+
+L'application les prend en compte quelques secondes après leur copie, sans redémarrer.
 
 Ces images ne sont pas fournies avec l'application : comme les fichiers du jeu, chacun y met les siennes.
 
 Les manettes vibrent quand le groupe frappe ou est blessé, à l'ouverture des portes, aux leviers
 et aux sorts. Le son du jeu vient de l'écran : il reste à sa place quand vous tournez la tête.
+Le seul son d'ambiance est le feu de cheminée, coupé au départ (clavier, bouton « Feu »).
 
 ## Comment c'est fait
 
