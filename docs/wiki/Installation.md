@@ -1,33 +1,37 @@
 # Installation
 
-Aucune compilation n'est nécessaire.
+Nothing to compile.
 
-## 1. Installer l'application
+## 1. Install the app
 
-1. Téléchargez `lol-vr.apk` depuis la [dernière version](https://github.com/karmajakk/lol-vr/releases/latest).
-2. Branchez le casque au PC, ouvrez [SideQuest](https://sidequestvr.com) et installez l'APK (icône « Install APK file from folder »).
-3. Dans le casque : Bibliothèque → filtre « Sources inconnues » → **Lands of Lore VR**.
+1. Download `lol-vr.apk` from the [latest release](https://github.com/karmajakk/lol-vr/releases/latest).
+2. Connect the headset to your PC, open [SideQuest](https://sidequestvr.com) and install the APK (the "Install APK file from folder" icon).
+3. In the headset: Library → "Unknown sources" filter → **Lands of Lore VR**.
 
-Au premier lancement, un écran indique que les fichiers du jeu manquent : c'est normal. Ce lancement crée le dossier où les copier.
+At first launch, a screen says the game files are missing: that's expected. This launch creates the folder where they go.
 
-## 2. Copier les fichiers du jeu
+## 2. Copy the game files
 
-Copiez **tout le contenu du CD** du jeu (les fichiers `.PAK`, dont `GENERAL.PAK`) dans ce dossier du casque :
+Copy **the whole content of the game CD** (the `.PAK` files, including `GENERAL.PAK`) into this headset folder:
 
 `Android/data/com.karmajakk.lolvr/files/lol`
 
-Avec le gestionnaire de fichiers de SideQuest, ou l'Explorateur Windows une fois le casque branché et l'accès aux fichiers autorisé.
+Use SideQuest's file manager, or Windows Explorer once the headset is connected and file access is allowed.
 
-**Version GOG** : les `.PAK` sont enfermés dans `GAME.DAT`, une image du CD. Ouvrez `GAME.DAT` avec [7-Zip](https://www.7-zip.org) et copiez le contenu de son dossier `DATA` (y compris le sous-dossier `ENG`).
+**GOG version**: the `.PAK` files are packed inside `GAME.DAT`, a CD image. Open `GAME.DAT` with [7-Zip](https://www.7-zip.org) and copy the content of its `DATA` folder (including the `ENG` subfolder).
 
-Le jeu démarre tout seul dès que les fichiers sont en place.
+The game starts by itself as soon as the files are in place.
 
-## Mettre à jour
+## Language
 
-Installez simplement le nouvel APK **par-dessus** l'ancien : les fichiers du jeu et les sauvegardes sont conservés.
+The app is in English by default. To switch to French, look at your left hand, click the gear and choose "Language".
 
-## Sauvegardes
+## Updating
 
-Elles sont dans `Android/data/com.karmajakk.lolvr/files/sauvegardes`.
+Just install the new APK **over** the old one: the game files and the saves are kept.
 
-**Attention : désinstaller l'application efface ce dossier.** Copiez-le sur le PC avant de désinstaller.
+## Saves
+
+They are in `Android/data/com.karmajakk.lolvr/files/sauvegardes`.
+
+**Warning: uninstalling the app erases this folder.** Copy it to your PC before uninstalling.

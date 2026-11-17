@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
 	scene.init(true);
 	Ui ui;
 	ui.initGl(true);
-	ui.setOptions(false, true, true);
+	ui.setOptions(false, true);
 
 	SceneState st;
 	st.screenPos = {0, 1.30f, -2.2f};
@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
 		{"split_pt", kEnvPassthroughFrame, kThemeKeep, seat, 0, -10, 1.25f, true, 0.0f, 0.0f, 1},
 		{"corner", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.25f, true, 0.0f, 0.0f, 3},
 		{"help", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.0f, false, 0.0f, 0.0f, 4},
-		{"table_moved", kEnvLibrary, kThemeKeep, {0.6f, 1.6f, 1.2f}, 35, -25, 1.0f, true, 0.0f, 0.0f, 5},
+		{"wrist", kEnvLibrary, kThemeKeep, seat, 10, -12, 0.6f, true, 0.0f, 0.0f, 5},
 		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
 
@@ -380,10 +380,6 @@ int main(int argc, char **argv) {
 			ui.placement[kPanelParty] = {0.0f, -1.2f, 2.0f, 0.006f};
 			SceneState::Panel p = panel(0);
 			check(p.center.y - p.halfH > 0.0f, "fenêtre placée sous le plancher : remontée");
-			// Au-dessus de la table (0,62 m devant le joueur), mais trop bas
-			ui.placement[kPanelParty] = {0.0f, -1.05f, 1.0f, 0.0008f};
-			p = panel(0);
-			check(p.center.y - p.halfH >= kTableTop, "fenêtre placée dans la table : remontée au-dessus du plateau");
 			ui.placement[kPanelSpells] = {1.5f, 0.0f, 5.0f, 0.006f};
 			p = panel(2);
 			check(p.center.x > -kRoomHalfX + 0.3f, "fenêtre placée dans le mur : ramenée dans la pièce");
@@ -471,7 +467,7 @@ int main(int argc, char **argv) {
 			ui.update(in, o, tmp);
 			SceneState::Panel kb = tmp.panels[5];
 			auto keyPos = [&](float col, float row) {
-				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((1.0f - 2.0f * row * 40.0f / 324.0f) * kb.halfH);
+				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((1.0f - 2.0f * row * 40.0f / 284.0f) * kb.halfH);
 			};
 			auto press = [&](float col, float row) {
 				aimAt(keyPos(col, row));
@@ -491,10 +487,6 @@ int main(int argc, char **argv) {
 			check(k.keyCount == 1 && k.keys[0] == 13, "clavier : Entrée");
 			k = press(1.0f, 0.5f);
 			check(k.action == kUiActionToggleFire, "clavier : bouton du feu");
-			k = press(6.0f, 0.5f);
-			check(k.action == kUiActionToggleTable, "clavier : bouton de la table");
-			k = press(5.0f, 6.5f);
-			check(k.action == kUiActionToggleHelp, "clavier : bouton de l'aide");
 			in.keyboardOpen = false;
 			// Panneau d'aide : visible, et un clic dessus le ferme
 			in.helpOpen = true;
@@ -507,26 +499,45 @@ int main(int argc, char **argv) {
 			check(o.action == kUiActionCloseHelp && !o.buttonsToGame, "aide : un clic la ferme");
 			in.triggerDown = in.triggerPressed = false;
 			in.helpOpen = false;
-			// Table : on attrape sa barrette, on la tire vers la gauche, elle suit sur le plancher
-			in.tableHandle = true;
+			// Menu du poignet : l'engrenage n'apparaît que si l'on regarde la main gauche
+			in.wristValid = true;
+			in.wristPos = {-0.25f, 0.95f, -0.35f};
+			in.headPos = seat;
+			in.headDir = {0, 0, -1};
 			ui.update(in, o, tmp);
-			Vec3 th = tmp.handles[6].center;
-			aimAt(th);
+			int shown = 0;
+			for (int i = 0; i < SceneState::kMaxPanels; i++) shown += tmp.panels[i].visible ? 1 : 0;
+			in.headDir = normalize(in.wristPos + Vec3{0, 0.075f, 0.06f} - in.headPos);
+			ui.update(in, o, tmp);
+			int shown2 = 0, gear = -1;
+			for (int i = 0; i < SceneState::kMaxPanels; i++)
+				if (tmp.panels[i].visible) { shown2++; gear = i; }
+			check(shown2 == shown + 1, "poignet : l'engrenage apparaît quand on regarde la main gauche");
+			Vec3 gearPos = tmp.panels[gear].center;
+			in.tip = {0.25f, 0.95f, -0.30f};
+			aimAt(gearPos);
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
-			check(o.grabbed && o.dragging && !o.screenDragging, "table : barrette prise");
-			in.triggerPressed = false;
-			aimAt(th + Vec3{-0.6f, 0, 0});
+			in.triggerDown = in.triggerPressed = false;
 			ui.update(in, o, tmp);
-			check(o.tableMoved && o.tableX < -0.4f && fabsf(o.tableZ - in.tableZ) < 0.15f && fabsf(o.tableScale - 1.0f) < 1e-3f, "table : elle suit le doigt vers la gauche");
-			in.stickX = 1.0f; in.dt = 0.5f;
+			int shown3 = 0, menu = -1;
+			for (int i = 0; i < SceneState::kMaxPanels; i++)
+				if (tmp.panels[i].visible) { shown3++; menu = i; }
+			check(o.action == kUiActionNone && shown3 == shown2 + 1, "poignet : un clic sur l'engrenage ouvre le menu");
+			SceneState::Panel m = tmp.panels[menu];
+			auto row = [&](int r) { return m.center + m.up * ((1.0f - (r + 0.5f) / 2.0f) * m.halfH); };
+			aimAt(row(1));
+			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
-			check(o.tableMoved && o.tableScale > 1.3f, "table : joystick à droite, elle grandit");
-			in.stickX = 0; in.dt = 0.016f;
-			in.triggerDown = false;
+			check(o.action == kUiActionToggleLanguage && !o.buttonsToGame, "menu : première ligne, changer de langue");
+			in.triggerDown = in.triggerPressed = false;
 			ui.update(in, o, tmp);
-			check(o.released && o.layoutChanged, "table : lâchée, à mémoriser");
-			in.tableHandle = false;
+			aimAt(row(2));
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.action == kUiActionToggleHelp, "menu : deuxième ligne, les manettes");
+			in.triggerDown = in.triggerPressed = false;
+			in.wristValid = false;
 			in.keyboardOpen = false;
 		}
 		// 10. Image entière : pas de fenêtres, le coin de l'écran donne le coin de l'image
@@ -616,23 +627,36 @@ int main(int argc, char **argv) {
 				in.tip = st.hands[1].pos + rotate(st.hands[1].rot, gloveFingertip(false, 0.0f));
 			}
 			in.dir = rotate(st.hands[1].rot, {0, 0, -1});
-			if (sh.mode == 5) // le doigt vise la barrette de la table déplacée
-				in.dir = normalize(Vec3{-1.0f, 0.66f * 0.85f + 0.16f, 0.25f} - in.tip);
 			if (sh.mode == 3) // le doigt vise le coin haut droit du cadre de l'écran
 				in.dir = normalize(in.screenPos + Vec3{in.dispW * 0.595f, in.dispH * 0.5f + in.dispW * 0.095f, 0} - in.tip);
 		}
 		ui.setInfo("Images : fenetre OUI, portrait OUI, tableau1 non, tableau2 non", "Dossier decor : fenetre.png portrait.png");
 		in.helpOpen = sh.mode == 4;
-		in.tableHandle = sh.env == kEnvLibrary;
+		ui.setLanguage(sh.mode == 4 ? kLangFrench : kLangEnglish);
 		if (sh.mode == 5) {
-			in.tableX = -1.0f; in.tableZ = 0.25f; in.tableScale = 0.85f;
+			// La main gauche levée devant le visage, l'engrenage puis le menu
+			st.hands[0].pos = {-0.10f, 1.08f, -0.42f};
+			in.wristValid = true;
+			in.wristPos = st.hands[0].pos;
+			in.wristRot = st.hands[0].rot;
+			in.headPos = sh.eye;
+			in.headDir = normalize(in.wristPos - in.headPos);
 		}
-		scene.setTable(true, in.tableX, in.tableZ, in.tableScale);
 		if (sh.mode == 1) {
 			in.partyMark[0] = 149; in.partyMark[1] = 143; in.partyMark[2] = 66; in.partyMark[3] = 34;
 		}
 		ui.resetLayout(in);
 		UiFrameOutput uo;
+		if (sh.mode == 5) {
+			UiFrameInput click = in;
+			click.dir = normalize(in.wristPos + rotate(in.wristRot, {0.0f, 0.075f, 0.06f}) - in.tip);
+			click.triggerDown = click.triggerPressed = true;
+			ui.update(click, uo, st);
+			if (!uo.clicked) { // refermé par une prise précédente : on rouvre
+				ui.update(in, uo, st);
+				ui.update(click, uo, st);
+			}
+		}
 		ui.update(in, uo, st);
 		ui.update(in, uo, st);
 		st.hitValid = uo.hitValid;

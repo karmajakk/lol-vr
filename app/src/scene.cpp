@@ -559,17 +559,6 @@ void Scene::Impl::rebuildRoom() {
 	SCENE_LOG("décor prêt (thème %s, %d sommets)", themeInfo(loadedTheme).name, (int)solid.verts.size());
 }
 
-void Scene::setTable(bool on, float x, float z, float scale) {
-	RoomOptions &o = d->roomOptions;
-	if (o.table != on || fabsf(o.tableX - x) > 1e-3f || fabsf(o.tableZ - z) > 1e-3f || fabsf(o.tableScale - scale) > 1e-3f) {
-		o.table = on;
-		o.tableX = x;
-		o.tableZ = z;
-		o.tableScale = scale;
-		d->roomDirty = true;
-	}
-}
-
 // Copie une image du joueur dans deux couches du tableau de textures (moitié gauche, moitié droite).
 void Scene::setImage(int slot, const unsigned char *rgba, int w, int h) {
 	if (slot < 0 || slot > 5 || !rgba || w < 2 || h < 2 || !d->texArray)

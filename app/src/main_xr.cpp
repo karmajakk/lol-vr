@@ -477,9 +477,8 @@ struct App {
 	float viewLift = 0.0f; // la vue du donjon seule est remontée d'autant (mètres)
 	float viewShift = 0.0f; // la fiche d'un personnage, plus large, déborde d'autant vers la droite
 	bool charSheet = false; // la fiche d'un personnage est ouverte
-	bool tableOn = true;    // la table de lecture est dans la bibliothèque
-	float tableX = 0.0f, tableZ = -0.62f, tableScale = 1.0f; // sa place dans la pièce et sa taille
-	bool helpOpen = false, helpSeen = false; // panneau d'aide (affiché de lui-même la première fois)
+	bool helpOpen = false;  // panneau d'aide (ouvert depuis le menu du poignet)
+	int language = lolvr::kLangEnglish; // langue des textes de l'application
 	int moveDir = 0;       // direction tenue au joystick gauche
 	double imagesCheckedAt = -100.0;
 	bool imageLoaded[kImageSlots] = {false, false, false, false, false, false};
@@ -915,7 +914,7 @@ void showMissingFilesMessage(App &app) {
 	size_t pos = shortPath.find("/Android/");
 	if (pos != std::string::npos)
 		shortPath = shortPath.substr(pos + 1);
-	std::string body =
+	std::string body = app.language == lolvr::kLangFrench ?
 		"Les fichiers du jeu sont introuvables.\n"
 		"\n"
 		"1. Branchez le casque à votre ordinateur.\n"
@@ -926,7 +925,19 @@ void showMissingFilesMessage(App &app) {
 		"   " + shortPath + "\n"
 		"\n"
 		"Le jeu démarrera tout seul dès que les fichiers\n"
-		"seront en place. Rien d'autre à faire.";
+		"seront en place. (Langue : engrenage au poignet gauche.)"
+		:
+		"The game files were not found.\n"
+		"\n"
+		"1. Connect the headset to your computer.\n"
+		"2. Copy the whole content of the Lands of Lore CD\n"
+		"   (the .PAK files, including GENERAL.PAK) into\n"
+		"   this folder of the headset:\n"
+		"\n"
+		"   " + shortPath + "\n"
+		"\n"
+		"The game starts by itself as soon as the files\n"
+		"are in place. (Language: gear on your left wrist.)";
 	lolvr::renderMessage(app.frame, "Lands of Lore VR", body.c_str());
 	app.frameDirty = true;
 }
@@ -947,7 +958,7 @@ void updateGame(App &app) {
 			cfg.saveDir = app.saveDir;
 			cfg.gameDir = app.gameDir;
 			cfg.log = coreLog;
-			lolvr::renderMessage(app.frame, "Lands of Lore VR", "Démarrage du jeu…");
+			lolvr::renderMessage(app.frame, "Lands of Lore VR", app.language == lolvr::kLangFrench ? "Démarrage du jeu…" : "Starting the game…");
 			app.frameDirty = true;
 			if (host.start(cfg))
 				app.coreStarted = true;
@@ -1055,19 +1066,9 @@ void loadSettings(App &app, int &environment) {
 		} else if (!strcmp(name, "feu")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.fireOn = iv != 0;
-		} else if (!strcmp(name, "table")) {
-			float x = 0, z = 0, sc = 0;
-			int n = sscanf(rest, "%d %f %f %f", &iv, &x, &z, &sc);
-			if (n >= 1)
-				app.tableOn = iv != 0;
-			if (n == 4 && fabsf(x) <= 2.5f && z >= -3.0f && z <= 2.5f && sc >= 0.5f && sc <= 1.6f) {
-				app.tableX = x;
-				app.tableZ = z;
-				app.tableScale = sc;
-			}
-		} else if (!strcmp(name, "aide")) {
+		} else if (!strcmp(name, "langue")) {
 			if (sscanf(rest, "%d", &iv) == 1)
-				app.helpSeen = iv != 0;
+				app.language = iv == 1 ? lolvr::kLangFrench : lolvr::kLangEnglish;
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
@@ -1112,8 +1113,7 @@ void saveSettings(App &app) {
 		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
 	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
 	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
-	fprintf(f, "table %d %.3f %.3f %.3f\n", app.tableOn ? 1 : 0, app.tableX, app.tableZ, app.tableScale);
-	fprintf(f, "aide %d\n", app.helpSeen ? 1 : 0);
+	fprintf(f, "langue %d\n", app.language);
 	for (int i = 0; i < kEnvCount; i++)
 		fprintf(f, "visee %d %.4f %.4f\n", app.aimSaved[i] ? 1 : 0, app.aimYaw[i], app.aimPitch[i]);
 	if (app.ui.hasLayout())
@@ -1564,19 +1564,21 @@ void scanDecorImages(App &app) {
 			shownCount++;
 			shownNames += std::string(" ") + labels[k];
 		}
-	std::string l1 = "Images affichees (" + std::to_string(shownCount) + "/" + std::to_string(kImageSlots) + ") :" + (shownCount ? shownNames : std::string(" aucune"));
+	const bool fr = app.language == lolvr::kLangFrench;
+	std::string l1 = std::string(fr ? "Images affichees (" : "Images shown (") + std::to_string(shownCount) + "/" + std::to_string(kImageSlots) + (fr ? ") :" : "):") +
+	                 (shownCount ? shownNames : std::string(fr ? " aucune" : " none"));
 	std::string l2;
 	if (!decorExists)
-		l2 = "Dossier decor introuvable.";
+		l2 = fr ? "Dossier decor introuvable." : "Folder 'decor' not found.";
 	else if (!unreadable.empty()) {
-		l2 = "Illisible :";
+		l2 = fr ? "Illisible :" : "Unreadable:";
 		for (const std::string &u : unreadable)
 			l2 += " " + plainName(u);
-		l2 += " (PNG ou JPEG)";
+		l2 += fr ? " (PNG ou JPEG)" : " (use PNG or JPEG)";
 	} else if (seen.empty())
-		l2 = "Dossier decor vide : aucune image vue.";
+		l2 = fr ? "Dossier decor vide : aucune image vue." : "Folder 'decor' is empty: no image seen.";
 	else {
-		l2 = "Dossier decor :";
+		l2 = fr ? "Dossier decor :" : "Folder 'decor':";
 		for (const std::string &u : seen)
 			l2 += " " + plainName(u);
 	}
@@ -1644,16 +1646,16 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 		in.partyMark[2] = 66.0f;
 		in.partyMark[3] = 34.0f;
 	}
-	app.ui.setOptions(app.fireOn, app.detached, app.tableOn);
-	app.scene.setTable(app.tableOn, app.tableX, app.tableZ, app.tableScale);
-	in.table = app.tableOn;
-	in.tableHandle = app.tableOn && app.environment == lolvr::kEnvLibrary;
-	in.tableX = app.tableX; in.tableZ = app.tableZ; in.tableScale = app.tableScale;
-	if (!app.helpSeen && app.screenPlaced) {
-		app.helpSeen = true;
-		app.helpOpen = true;
-		app.settingsDirty = true;
+	app.ui.setOptions(app.fireOn, app.detached);
+	app.ui.setLanguage(app.language);
+	// Menu du poignet : sur la main gauche, quand on la regarde.
+	in.wristValid = app.aimValid[kLeft];
+	if (in.wristValid) {
+		in.wristPos = toVec3(app.aimPose[kLeft].position);
+		in.wristRot = toQuat(app.aimPose[kLeft].orientation);
 	}
+	in.headPos = app.headPos;
+	in.headDir = rotate(app.headRot, {0, 0, -1});
 	in.helpOpen = app.helpOpen;
 	in.compassBlank = app.split && app.charSheet;
 	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
@@ -1665,11 +1667,6 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0} - rotate(screenRot(app), {app.viewShift, 0, 0}), out.screenZoom);
 	if (out.screenResizing)
 		resizeScreen(app, out.screenZoom);
-	if (out.tableMoved) {
-		app.tableX = out.tableX;
-		app.tableZ = out.tableZ;
-		app.tableScale = out.tableScale;
-	}
 	for (int i = 0; i < out.keyCount; i++)
 		typeKey(app, out.keys[i], out.keyMods[i], now);
 	switch (out.action) {
@@ -1683,8 +1680,9 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	case lolvr::kUiActionCloseHelp:
 		app.helpOpen = false;
 		break;
-	case lolvr::kUiActionToggleTable:
-		app.tableOn = !app.tableOn;
+	case lolvr::kUiActionToggleLanguage:
+		app.language = app.language == lolvr::kLangFrench ? lolvr::kLangEnglish : lolvr::kLangFrench;
+		app.imagesCheckedAt = 0; // refaire les lignes d'information dans la nouvelle langue
 		app.settingsDirty = true;
 		break;
 	case lolvr::kUiActionToggleDetach:

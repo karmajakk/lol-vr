@@ -1,23 +1,23 @@
 # Lands of Lore VR
 
-*Lands of Lore: The Throne of Chaos* (Westwood, 1993) en réalité virtuelle sur **Meta Quest 3**, en autonome, sans PC.
-Le jeu original tourne grâce à [ScummVM](https://www.scummvm.org) ; l'application ajoute un décor en VR, une interface déplaçable, des vibrations et un son spatialisé.
+*Lands of Lore: The Throne of Chaos* (Westwood, 1993) in virtual reality on **Meta Quest 3**, standalone, no PC needed.
+The original game runs on [ScummVM](https://www.scummvm.org); the app adds a VR scenery, a movable interface, haptics and spatial sound.
 
-**Les fichiers du jeu ne sont pas fournis** : il faut votre propre exemplaire du jeu (version CD ou GOG).
+**The game files are not included**: you need your own copy of the game (CD or GOG version).
 
-## Pour commencer
+## Getting started
 
-- [[Installation]] : installer l'application et copier les fichiers du jeu
-- [[Commandes]] : manettes, déplacement de l'écran et des panneaux
-- [[Interface détachée|Interface-detachee]] : inventaire, sorts et portraits en fenêtres libres
-- [[Décors et images|Decors-et-images]] : bibliothèque, réalité mixte, vos propres images
-- [[Dépannage|Depannage]] : problèmes fréquents
+- [[Installation]]: install the app and copy the game files
+- [[Controls]]: controllers, wrist menu, moving the screen and windows
+- [[Detached interface|Detached-interface]]: inventory, spells and portraits in free windows
+- [[Scenery and pictures|Scenery-and-pictures]]: library, mixed reality, your own pictures
+- [[Troubleshooting]]: common problems
 
-## Pour les curieux
+## Behind the scenes
 
-- [[Développement|Developpement]] : comment c'est construit et comment publier une version
-- [[Feuille de route|Feuille-de-route]] : ce qui est envisagé
-- [Journal des changements](https://github.com/karmajakk/lol-vr/blob/main/CHANGELOG.md)
-- [Dernière version](https://github.com/karmajakk/lol-vr/releases/latest)
+- [[Development]]: how it's built and how to publish a version
+- [[Roadmap]]: what's being considered
+- [Changelog](https://github.com/karmajakk/lol-vr/blob/main/CHANGELOG.md)
+- [Latest version](https://github.com/karmajakk/lol-vr/releases/latest)
 
-Le projet est en développement (versions 0.x) : il a surtout été vérifié sur ordinateur, et son comportement dans le casque évolue d'après les retours de test.
+The project is in development (0.x versions). It is mostly checked on a PC, and its behavior in the headset evolves with test feedback.

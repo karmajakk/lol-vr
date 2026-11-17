@@ -1,155 +1,152 @@
 # Lands of Lore VR (lol-vr)
 
-*Lands of Lore: The Throne of Chaos* (Westwood, 1993) en réalité virtuelle sur Meta Quest 3,
-en autonome (sans PC). Le projet s'appuie sur [ScummVM](https://www.scummvm.org), qui fait
-tourner le jeu original.
+*Lands of Lore: The Throne of Chaos* (Westwood, 1993) in virtual reality on Meta Quest 3,
+standalone (no PC needed). The original game runs on [ScummVM](https://www.scummvm.org).
 
-**Les fichiers du jeu ne sont pas fournis.** Il vous faut votre propre exemplaire (version CD).
+**The game files are not included.** You need your own copy of the game (CD or GOG version).
 
-## Où en est le projet
+The app speaks English by default; French is available from the gear on your left wrist.
 
-Détail des versions : [CHANGELOG.md](CHANGELOG.md).
+## Project status
 
-| Version | Contenu | État |
+Version details: [CHANGELOG.md](CHANGELOG.md). Documentation: [project wiki](https://github.com/karmajakk/lol-vr/wiki).
+
+| Version | Content | Status |
 |---|---|---|
-| 0.1 | Le jeu complet sur un écran flottant en VR, manettes comme pointeur, son, sauvegardes | fait |
-| 0.2 | Bibliothèque médiévale (change selon la zone du jeu), cadre, gants, réalité mixte, moniteur cathodique, vibrations, son spatialisé | fait |
-| 0.3 | Mode fenêtre (donjon agrandi, interface au poignet) | abandonné |
-| 0.4 – 0.5 | Interface détachée en panneaux déplaçables, clavier, écran déplaçable, ordinateur 486, images personnelles, corrections | en test |
-| 1.0 | Le donjon en vraie 3D autour de vous | plus tard |
+| 0.1 | The full game on a floating screen in VR, controllers as pointer, sound, saves | done |
+| 0.2 | Medieval library (changes with the game area), frame, gloves, mixed reality, CRT monitor, haptics, spatial sound | done |
+| 0.3 | Window mode (enlarged dungeon, wrist interface) | dropped |
+| 0.4 – 0.10 | Detached interface in movable windows, keyboard, movable and resizable screen, 486 PC, your own pictures, button combat, wrist menu, English and French | testing |
+| 1.0 | The dungeon in true 3D around you | later |
 
-## Installation (sans rien compiler)
+## Installation (nothing to compile)
 
-1. Téléchargez `lol-vr.apk` depuis la page
-   [Releases](https://github.com/karmajakk/lol-vr/releases) (prenez la plus récente).
-2. Branchez le casque au PC, ouvrez SideQuest et installez l'APK
-   (icône « Install APK file from folder »).
-3. Dans le casque, lancez **Lands of Lore VR** (Bibliothèque → filtre « Sources inconnues »).
-   Un écran vous indique que les fichiers du jeu manquent : c'est normal. Ce premier lancement
-   crée le dossier où les copier.
-4. Sur le PC, copiez **tout le contenu du CD** du jeu (les fichiers `.PAK`, dont `GENERAL.PAK`)
-   dans ce dossier du casque :
+1. Download `lol-vr.apk` from the
+   [latest release](https://github.com/karmajakk/lol-vr/releases/latest).
+2. Connect the headset to your PC, open [SideQuest](https://sidequestvr.com) and install the APK
+   (the "Install APK file from folder" icon).
+3. In the headset, launch **Lands of Lore VR** (Library → "Unknown sources" filter).
+   A screen tells you the game files are missing: that's expected. This first launch creates
+   the folder where they go.
+4. On the PC, copy **the whole content of the game CD** (the `.PAK` files, including
+   `GENERAL.PAK`) into this folder of the headset:
 
    `Android/data/com.karmajakk.lolvr/files/lol`
 
-   (avec le gestionnaire de fichiers de SideQuest, ou l'Explorateur Windows une fois le casque
-   branché et l'accès aux fichiers autorisé).
+   (with SideQuest's file manager, or Windows Explorer once the headset is connected and file
+   access is allowed).
 
-   **Version GOG :** les fichiers `.PAK` sont enfermés dans `GAME.DAT`, une image du CD.
-   Ouvrez `GAME.DAT` avec [7-Zip](https://www.7-zip.org) et copiez le contenu de son dossier
-   `DATA` (y compris le sous-dossier `ENG`).
-5. Le jeu démarre tout seul dès que les fichiers sont en place.
+   **GOG version:** the `.PAK` files are packed inside `GAME.DAT`, a CD image. Open `GAME.DAT`
+   with [7-Zip](https://www.7-zip.org) and copy the content of its `DATA` folder (including the
+   `ENG` subfolder).
+5. The game starts by itself as soon as the files are in place.
 
-Les sauvegardes sont dans `Android/data/com.karmajakk.lolvr/files/sauvegardes`.
-Attention : désinstaller l'application efface ce dossier. Pour mettre à jour, installez
-simplement le nouvel APK par-dessus l'ancien.
+Saves are kept in `Android/data/com.karmajakk.lolvr/files/sauvegardes`.
+Warning: uninstalling the app erases this folder. To update, just install the new APK over the
+old one.
 
-## Commandes
+## Controls
 
-| Manette | Action |
+| Controller | Action |
 |---|---|
-| Viser + gâchette | Clic gauche (la main qui clique devient le pointeur) |
-| Viser + poignée | Clic droit |
-| Joystick gauche | Avancer, reculer, pas de côté |
-| Joystick droit (gauche/droite) | Tourner |
-| Joystick droit (haut/bas) | Dans le donjon : personnage suivant / précédent (il est encadré de jaune dans la fenêtre du groupe) |
-| A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
-| B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
-| Y | Carte |
-| **X** | **Clavier et options** : taper un nom de sauvegarde, couper ou remettre le son du feu, détacher ou non l'interface, afficher ou retirer la table, ranger les fenêtres |
-| Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |
-| Clic du joystick droit | Recentrer l'écran, la pièce et les panneaux devant soi |
-| Clic bref du joystick gauche | Changer de décor : bibliothèque → réalité mixte avec cadre → réalité mixte avec moniteur cathodique |
-| Clic du joystick gauche maintenu + joystick droit | Haut/bas : taille de l'écran ; gauche/droite : distance |
+| Aim + trigger | Left click (the hand that clicks becomes the pointer) |
+| Aim + grip | Right click |
+| Left stick | Walk forward, back, strafe |
+| Right stick (left/right) | Turn |
+| Right stick (up/down) | In the dungeon: next / previous character (framed in yellow in the party window) |
+| A | In the dungeon: **attack** with the selected character. Elsewhere: Enter |
+| B | In the dungeon: open the selected character's **magic**. Elsewhere: Escape (skip a cutscene) |
+| Y | Map |
+| **X** | **Keyboard and options**: type a save name, fire sound on/off, detached interface on/off, reset the window layout |
+| Menu button (left controller) | ScummVM menu: save, load, quit |
+| **Gear on the left wrist** | Look at your left hand and click the gear: language (English / French) and the controller mapping |
+| Right stick click | Recenter the screen, the room and the windows in front of you |
+| Short left stick click | Change scenery: library → mixed reality with frame → mixed reality with CRT monitor |
+| Left stick click held + right stick | Up/down: screen size; left/right: distance |
 
-### Déplacer l'écran et les panneaux
+### Moving and resizing the screen and windows
 
-L'écran et le clavier portent une **barrette de laiton** au-dessus d'eux ; les fenêtres du jeu la portent sur le côté, pour ne pas gêner le pointeur entre l'écran et les fenêtres. Dès que le doigt
-quitte l'écran et les panneaux, le rayon du pointeur s'allonge pour montrer où l'on vise.
-Visez la barrette, serrez la gâchette et gardez-la serrée : l'objet suit votre doigt. Pendant que vous le tenez, le
-joystick droit le pousse ou le tire (haut/bas) et le rapetisse ou l'agrandit (gauche/droite).
-Relâchez la gâchette pour le poser. Tout est mémorisé d'une fois à l'autre.
+The screen and the keyboard carry a **brass bar** above them; the game windows carry it on their
+side, so it never gets in the pointer's way between the screen and the windows. As soon as your
+finger leaves the screen and the windows, the pointer beam gets longer to show where you aim.
+Aim at the bar, squeeze the trigger and keep it squeezed: the object follows your hand. While you
+hold it, the right stick pushes or pulls it (up/down) and shrinks or enlarges it (left/right).
+Release the trigger to drop it. Everything is remembered between sessions.
 
-La **table** de la bibliothèque a aussi sa barrette, au-dessus du plateau : tenez-la et pointez
-le plancher pour la faire glisser ; le joystick droit (gauche/droite) change sa taille. Le bouton
-« Table » du clavier (X) la retire ou la remet.
+To **resize** the screen or a window, aim at one of its corners, just outside (on the frame, for
+the screen): a brass bracket appears. Squeeze the trigger and move your hand away or closer; the
+window grows or shrinks around its center.
 
-Un **panneau d'aide** résume les manettes : il s'affiche au premier lancement, et la touche
-« Aide » du clavier (X) le rouvre. Un clic dessus le ferme.
+## The detached interface
 
-Pour **agrandir ou réduire** l'écran ou une fenêtre, visez l'un de ses coins, juste à l'extérieur
-(sur le cadre, pour l'écran) : une équerre de laiton apparaît. Serrez la gâchette et écartez ou
-rapprochez la main ; la fenêtre grandit ou rapetisse autour de son centre.
+While exploring, the screen only shows the dungeon view. The rest of the game interface is spread
+over windows you can place wherever you like: the party (messages and portraits), the inventory,
+the spell scroll, the controls (arrows, options, rest) and the compass. At first they sit around
+the screen: the pointer moves from one to the other with no offset, so you can pick up an item
+on the floor and drop it into the inventory.
+Each window is independent: moving or resizing the screen doesn't move the others. In the
+library, they don't go through the floor or the walls.
+During cutscenes, menus, the map and full-width scenes, the whole image comes back by itself.
+A character sheet is shown in full on the screen (which widens to the right); the windows stay
+where they are and the compass window goes dark.
 
-## L'interface détachée
+The "Panels" button on the keyboard (X) shows the whole image all the time, and "Reset layout"
+arranges the windows around the screen, wherever it is.
 
-Pendant l'exploration, l'écran ne montre que la vue du donjon. Le reste de l'interface du jeu est
-réparti sur des fenêtres que l'on place où l'on veut : le groupe (messages et portraits),
-l'inventaire, le parchemin des sorts, les commandes (flèches, options, repos) et la boussole.
-Au départ, elles sont rangées autour de l'écran : le pointeur passe de l'une à l'autre sans
-décalage, ce qui permet de ramasser un objet au sol et de le déposer dans l'inventaire.
-Chaque fenêtre est indépendante : déplacer ou agrandir l'écran ne bouge pas les autres. Dans la
-bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table.
-Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image
-entière revient d'elle-même. La fiche d'un personnage, elle, s'affiche en entier dans l'écran
-(qui s'élargit vers la droite) ; les fenêtres restent en place et celle de la boussole s'éteint.
+## Scenery
 
-Le bouton « Panneaux » du clavier (X) rend l'image entière en permanence, et « Ranger »
-range les panneaux autour de l'écran, là où il se trouve.
+- **Medieval library**: a closed room with a fireplace, a window, shelves, paintings and banners.
+  The view through the window, the light, a painting, the banners and the soundscape change with
+  the game area.
+- **Mixed reality**: your real room, with the game in its golden frame.
+- **CRT monitor**: your real room, with the game on a curved 90s screen standing on its desktop
+  computer.
 
-## Les décors
+### Your own pictures in the library (optional)
 
-- **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux et
-  bannières ; on y est assis à une table de lecture, face à l'écran. La vue par la fenêtre, la
-  lumière, un tableau, les bannières et l'ambiance sonore changent selon la zone du jeu.
-- **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
-- **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90 posé
-  sur son ordinateur de bureau.
+You can add pictures to the headset folder `Android/data/com.karmajakk.lolvr/files/decor`
+(PNG or JPEG):
 
-### Vos images dans la bibliothèque (facultatif)
+| File name | Where it goes |
+|---|---|
+| `fenetre` | the view through the window |
+| `portrait` | the painting above the fireplace |
+| `tableau1` | left wall, in place of the map |
+| `tableau2` | back wall, left of the door |
+| `tableau3` | left wall, in place of the landscape |
+| `tableau4` | back wall, right of the door (the frame only appears if the picture exists) |
 
-Des images peuvent être ajoutées dans le dossier `Android/data/com.karmajakk.lolvr/files/decor`
-du casque (PNG ou JPEG) :
+Six pictures at most. The name can also contain `castle` or `king` (for the window and the
+portrait); a picture with any other name takes the first free spot. The app picks them up a few
+seconds after you copy them, no restart needed. Under the keyboard (X), two lines show which
+pictures are displayed and which files the app sees in the folder.
 
-- `fenetre.png` : la vue par la fenêtre ;
-- `portrait.png` : le tableau au-dessus de la cheminée ;
-- `tableau1.png`, `tableau3.png` : les deux tableaux du mur de gauche ;
-- `tableau2.png`, `tableau4.png` : les deux tableaux du mur du fond (le quatrième cadre n'apparaît
-  que si l'image est fournie).
+These pictures don't ship with the app: like the game files, everyone brings their own.
 
-Six images au maximum.
+The controllers vibrate when the party hits or gets hurt, when doors open, on levers and spells.
+The game sound comes from the screen: it stays in place when you turn your head. The only
+ambient sound is the fireplace, off by default (keyboard, "Fire" button).
 
-Le nom peut aussi contenir « chateau », « roi », etc. ; une image au nom quelconque prend la
-première place libre. L'application les prend en compte quelques secondes après leur copie, sans
-redémarrer. Sous le clavier (bouton X), deux lignes indiquent quelles images sont affichées et
-quels fichiers l'application voit dans le dossier.
+## How it's built
 
-Ces images ne sont pas fournies avec l'application : comme les fichiers du jeu, chacun y met les siennes.
+- `app/`: the Quest app (C++, OpenXR, OpenGL ES). `core_host.cpp` runs ScummVM, `main_xr.cpp`
+  handles the headset, the controllers, the layers and the haptics. The scenery is entirely
+  generated by code, with no image or sound file: `scene.cpp` (rendering), `room.cpp` and
+  `props.cpp` (room, frame, monitor, gloves), `proctex.cpp` (textures), `ambience.cpp` (spatial
+  sound and ambience), `ui.cpp` (windows, bars, keyboard, wrist menu, pointer).
+- `app/test/`: test benches that run on a PC without a headset (scenery images, sound, game core).
+- `core/` and `patches/`: settings and patches applied to ScummVM (libretro core, limited to the
+  Lands of Lore engine). The second patch tells the app the game area and events (hits, sounds)
+  for the scenery and the haptics.
+- `scripts/build.sh`: builds the APK. GitHub runs it on every change
+  (`.github/workflows/build.yml`); a new version is published to the Releases when the `VERSION`
+  file changes (notes taken from `CHANGELOG.md`).
+- `docs/wiki/`: the pages of the project wiki.
+- `keystore/debug.keystore`: a public test signing key, only used so updates can be installed
+  over the previous version. It protects nothing.
 
-Les manettes vibrent quand le groupe frappe ou est blessé, à l'ouverture des portes, aux leviers
-et aux sorts. Le son du jeu vient de l'écran : il reste à sa place quand vous tournez la tête.
-Le seul son d'ambiance est le feu de cheminée, coupé au départ (clavier, bouton « Feu »).
+## License
 
-## Comment c'est fait
-
-- `app/` : l'application Quest (C++, OpenXR, OpenGL ES). `core_host.cpp` fait tourner ScummVM,
-  `main_xr.cpp` gère le casque, les manettes, les calques et les vibrations. Le décor est
-  entièrement calculé par le programme, sans aucun fichier d'image ni de son : `scene.cpp`
-  (rendu), `room.cpp` et `props.cpp` (pièce, cadre, moniteur, gants), `proctex.cpp` (textures),
-  `ambience.cpp` (son spatialisé et ambiance), `ui.cpp` (panneaux, poignées, clavier, pointeur).
-- `app/test/` : bancs d'essai qui tournent sur PC sans casque (images du décor, son, cœur du jeu).
-- `core/` et `patches/` : réglages et correctifs appliqués à ScummVM (cœur « libretro », limité
-  au moteur de Lands of Lore). Le second correctif fait connaître à l'application la zone du jeu
-  et les événements (coups, sons) pour le décor et les vibrations.
-- `scripts/build.sh` : construit l'APK. GitHub le lance automatiquement à chaque modification
-  (`.github/workflows/build.yml`) ; une nouvelle version est publiée dans les Releases quand le
-  fichier `VERSION` change (notes tirées de `CHANGELOG.md`).
-- `docs/wiki/` : les pages du wiki du projet.
-- `keystore/debug.keystore` : clé de signature de test, publique, qui sert seulement à pouvoir
-  installer les mises à jour par-dessus l'ancienne version. Elle ne protège rien.
-
-## Licence
-
-GPL version 3 ou ultérieure, comme ScummVM (voir `COPYING`). *Lands of Lore* est une marque de
-ses propriétaires respectifs ; ce projet n'est affilié ni à Westwood, ni à Electronic Arts, ni à
-l'équipe de ScummVM.
+GPL version 3 or later, like ScummVM (see `COPYING`). *Lands of Lore* is a trademark of its
+respective owners; this project is not affiliated with Westwood, Electronic Arts or the ScummVM
+team.

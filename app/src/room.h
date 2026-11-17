@@ -12,8 +12,6 @@ const float kRoomHalfX = 2.7f;
 const float kRoomFrontZ = -3.5f;
 const float kRoomBackZ = 2.7f;
 const float kRoomHeight = 3.3f;
-// Table de lecture devant le joueur (repère de la pièce)
-const float kTableZ = -0.62f, kTableHalfW = 0.80f, kTableHalfD = 0.28f, kTableTop = 0.66f; // taille 1, place d'origine
 
 enum LightKind { kLightWarm = 0, kLightWindow = 1, kLightFire = 2 };
 
@@ -50,8 +48,6 @@ struct RoomInfo {
 
 // Images fournies par le joueur (fenêtre, portrait au-dessus de la cheminée).
 struct RoomOptions {
-	bool table = true; // table de lecture et tabouret devant le joueur
-	float tableX = 0.0f, tableZ = -0.62f, tableScale = 1.0f; // où le joueur l'a posée, et sa taille
 	bool windowImage = false;
 	float windowAspect = 1.6f; // largeur / hauteur
 	bool portraitImage = false;

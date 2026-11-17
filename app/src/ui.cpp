@@ -29,7 +29,9 @@ struct Source {
 };
 
 // Clavier : grille de 11 colonnes sur 6 rangées.
-const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 7;
+const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 6;
+// Menu du poignet : engrenage et petit menu
+const int kGearSize = 64, kMenuW = 288, kMenuRowH = 44, kMenuRows = 4, kMenuH = kMenuRowH * kMenuRows;
 // Panneau d'aide
 const int kHelpW = 584, kHelpH = 470;
 const int kInfoH = 44; // deux lignes d'information sous les touches
@@ -121,7 +123,8 @@ struct Canvas {
 struct Ui::Impl {
 	std::vector<Key> keys;
 	bool shift = false;
-	bool fireOn = false, detached = true, tableOn = true;
+	bool fireOn = false, detached = true;
+	int language = kLangEnglish;
 	std::string info[2];
 	GLuint kbTex = 0;
 	bool kbDirty = true;
@@ -131,9 +134,17 @@ struct Ui::Impl {
 	int pressKey = -1;
 
 	// Poignée tenue : -1 aucune, 0..kUiPanelCount-1 un panneau, kScreenTarget l'écran.
-	static const int kScreenTarget = 100, kTableTarget = 101;
-	GLuint helpTex = 0;
+	static const int kScreenTarget = 100;
+	GLuint helpTex = 0, gearTex = 0, menuTex = 0;
+	bool helpDirty = true, menuDirty = true;
 	void renderHelp();
+	void renderGear();
+	void renderMenu();
+	void upload(GLuint &tex, const std::vector<uint8_t> &px, int w, int h);
+	// Menu du poignet : ouvert, il reste où il est apparu.
+	bool menuOpen = false;
+	Vec3 menuPos = {0, 0, 0}, menuRight = {1, 0, 0}, menuUp = {0, 1, 0};
+	int menuHot = -1;
 	int drag = -1;
 	float grabDist = 1.0f;
 	Vec3 grabOffset = {0, 0, 0};
@@ -148,11 +159,10 @@ struct Ui::Impl {
 
 void Ui::Impl::buildKeys() {
 	keys.clear();
-	keys.push_back({0, 0, 2, "", "", 0, kUiActionToggleFire});
-	keys.push_back({2, 0, 3, "", "", 0, kUiActionToggleDetach});
-	keys.push_back({5, 0, 2, "", "", 0, kUiActionToggleTable});
-	keys.push_back({7, 0, 2, "Ranger", "", 0, kUiActionResetLayout});
-	keys.push_back({9, 0, 2, "Fermer", "", 0, kUiActionCloseKeyboard});
+	keys.push_back({0, 0, 3, "", "", 0, kUiActionToggleFire});
+	keys.push_back({3, 0, 3, "", "", 0, kUiActionToggleDetach});
+	keys.push_back({6, 0, 3, "", "", 0, kUiActionResetLayout});
+	keys.push_back({9, 0, 2, "", "", 0, kUiActionCloseKeyboard});
 	const char *digits = "1234567890";
 	for (int i = 0; i < 10; i++)
 		keys.push_back({i, 1, 1, std::string(1, digits[i]), "", (unsigned)digits[i], kUiActionNone});
@@ -174,20 +184,36 @@ void Ui::Impl::buildKeys() {
 	keys.push_back({0, 5, 2, "\xC9" "chap", "", 27, kUiActionNone});
 	keys.push_back({2, 5, 6, "Espace", "", ' ', kUiActionNone});
 	keys.push_back({8, 5, 3, "Entr\xE9" "e", "", 13, kUiActionNone});
-	keys.push_back({0, 6, 11, "Aide : les manettes et les boutons", "", 0, kUiActionToggleHelp});
 }
 
 void Ui::Impl::renderKeyboard() {
 	Canvas cv{kKbW, kKbH, std::vector<uint8_t>((size_t)kKbW * kKbH * 4)};
 	cv.rect(0, 0, kKbW, kKbH, 34, 24, 16);
-	keys[0].label = fireOn ? "Feu: oui" : "Feu: non";
-	keys[1].label = detached ? "Panneaux: oui" : "Panneaux: non";
-	keys[2].label = tableOn ? "Table: oui" : "Table: non";
+	const bool fr = language == kLangFrench;
+	for (Key &k : keys) {
+		if (k.action == kUiActionToggleFire)
+			k.label = fr ? (fireOn ? "Feu : oui" : "Feu : non") : (fireOn ? "Fire: on" : "Fire: off");
+		else if (k.action == kUiActionToggleDetach)
+			k.label = fr ? (detached ? "Panneaux : oui" : "Panneaux : non") : (detached ? "Panels: on" : "Panels: off");
+		else if (k.action == kUiActionResetLayout)
+			k.label = fr ? "Tout ranger" : "Reset layout";
+		else if (k.action == kUiActionCloseKeyboard)
+			k.label = fr ? "Fermer" : "Close";
+		else if (k.action == -1) {
+			k.label = fr ? "Maj" : "Shift";
+			k.shiftLabel = fr ? "MAJ" : "SHIFT";
+		} else if (k.key == 27)
+			k.label = fr ? "\xC9" "chap" : "Esc";
+		else if (k.key == ' ')
+			k.label = fr ? "Espace" : "Space";
+		else if (k.key == 13)
+			k.label = fr ? "Entr\xE9" "e" : "Enter";
+	}
 	for (size_t i = 0; i < keys.size(); i++) {
 		const Key &k = keys[i];
 		int x0 = k.col * kCellW + 2, y0 = k.row * kCellH + 2, x1 = (k.col + k.span) * kCellW - 2, y1 = (k.row + 1) * kCellH - 2;
-		bool option = k.row == 0 || k.row == 6;
-		bool lit = (k.action == -1 && shift) || (k.action == kUiActionToggleFire && fireOn) || (k.action == kUiActionToggleDetach && detached) || (k.action == kUiActionToggleTable && tableOn);
+		bool option = k.row == 0;
+		bool lit = (k.action == -1 && shift) || (k.action == kUiActionToggleFire && fireOn) || (k.action == kUiActionToggleDetach && detached);
 		// Touche en relief : bord clair en haut, sombre en bas
 		cv.rect(x0, y0, x1, y1, 30, 20, 12);
 		if (lit)
@@ -236,8 +262,51 @@ static std::string latin1(const char *utf8) {
 	return out;
 }
 
+void Ui::Impl::upload(GLuint &tex, const std::vector<uint8_t> &px, int w, int h) {
+	if (!tex)
+		glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void Ui::Impl::renderHelp() {
-	static const char *const lines[] = {
+	static const char *const english[] = {
+		"#CONTROLLER MAPPING",
+		"",
+		"#Everywhere",
+		"Aim + trigger ............ left click",
+		"Aim + grip ............... right click",
+		"Left stick ............... walk forward, back, strafe",
+		"Right stick (sideways) ... turn",
+		"Y : map        X : keyboard and options",
+		"Menu button (left) ....... save, load, quit",
+		"Gear on the left wrist ... language, this help",
+		"",
+		"#Combat, in the dungeon",
+		"A ........................ attack with the framed character",
+		"B ........................ open their magic, then aim at a spell",
+		"Right stick (up/down) .... change character",
+		"Use an item: click the item, then the portrait",
+		"",
+		"#Menus and cutscenes",
+		"A : Enter       B : Escape (skip)",
+		"",
+		"#Windows and screen",
+		"Brass bar + hold trigger ........ move",
+		"Corner (bracket) + hold trigger . resize",
+		"Right stick click ........ recenter everything",
+		"Left stick click ......... change scenery",
+		"",
+		"Click this panel to close it.",
+		nullptr,
+	};
+	static const char *const french[] = {
 		"#LES MANETTES ET LES BOUTONS",
 		"",
 		"#Partout",
@@ -245,8 +314,9 @@ void Ui::Impl::renderHelp() {
 		"Viser + poignée .......... clic droit",
 		"Joystick gauche .......... avancer, reculer, pas de côté",
 		"Joystick droit (côtés) ... tourner",
-		"Y : carte      X : clavier, options et cette aide",
+		"Y : carte      X : clavier et options",
 		"Bouton menu (gauche) ..... sauvegarder, charger, quitter",
+		"Engrenage au poignet gauche : langue, cette aide",
 		"",
 		"#Combat, dans le donjon",
 		"A ........................ attaquer avec le personnage encadré",
@@ -257,18 +327,21 @@ void Ui::Impl::renderHelp() {
 		"#Menus et cinématiques",
 		"A : Entrée      B : Échap (passer)",
 		"",
-		"#Fenêtres, écran et table",
+		"#Fenêtres et écran",
 		"Barrette de laiton + gâchette tenue ... déplacer",
 		"Coin (équerre) + gâchette tenue ....... agrandir, réduire",
 		"Clic du joystick droit ... tout recentrer devant soi",
 		"Clic du joystick gauche .. changer de décor",
 		"",
 		"Cliquer ce panneau pour le fermer.",
+		nullptr,
 	};
+	const char *const *lines = language == kLangFrench ? french : english;
 	Canvas cv{kHelpW, kHelpH, std::vector<uint8_t>((size_t)kHelpW * kHelpH * 4)};
 	cv.rect(0, 0, kHelpW, kHelpH, 30, 21, 14);
 	int y = 10;
-	for (const char *line : lines) {
+	for (int i = 0; lines[i]; i++) {
+		const char *line = lines[i];
 		bool title = line[0] == '#';
 		std::string text = latin1(title ? line + 1 : line);
 		if (title) {
@@ -279,16 +352,55 @@ void Ui::Impl::renderHelp() {
 		}
 		y += text.empty() ? 8 : 18;
 	}
-	if (!helpTex)
-		glGenTextures(1, &helpTex);
-	glBindTexture(GL_TEXTURE_2D, helpTex);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, kHelpW, kHelpH, 0, GL_RGBA, GL_UNSIGNED_BYTE, cv.px.data());
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	upload(helpTex, cv.px, kHelpW, kHelpH);
+	helpDirty = false;
+}
+
+// Un engrenage de laiton sur fond sombre.
+void Ui::Impl::renderGear() {
+	const int N = kGearSize;
+	std::vector<uint8_t> px((size_t)N * N * 4);
+	for (int y = 0; y < N; y++)
+		for (int x = 0; x < N; x++) {
+			float dx = (float)x + 0.5f - N * 0.5f, dy = (float)y + 0.5f - N * 0.5f;
+			float r = sqrtf(dx * dx + dy * dy), a = atan2f(dy, dx);
+			float outer = cosf(a * 8.0f) > 0.0f ? 27.0f : 21.0f;
+			uint8_t *p = &px[((size_t)y * N + x) * 4];
+			bool metal = r < outer && r > 9.0f;
+			float shade = 0.75f + 0.25f * (-dy / (N * 0.5f));
+			p[0] = metal ? (uint8_t)(230 * shade) : 34;
+			p[1] = metal ? (uint8_t)(170 * shade) : 24;
+			p[2] = metal ? (uint8_t)(70 * shade) : 16;
+			p[3] = 255;
+		}
+	upload(gearTex, px, N, N);
+}
+
+void Ui::Impl::renderMenu() {
+	const bool fr = language == kLangFrench;
+	Canvas cv{kMenuW, kMenuH, std::vector<uint8_t>((size_t)kMenuW * kMenuH * 4)};
+	cv.rect(0, 0, kMenuW, kMenuH, 34, 24, 16);
+	const std::string rows[kMenuRows] = {
+		"Lands of Lore VR",
+		latin1(fr ? "Langue : Français" : "Language: English"),
+		latin1(fr ? "Manettes et boutons" : "Controller mapping"),
+		latin1(fr ? "Fermer" : "Close"),
+	};
+	for (int i = 0; i < kMenuRows; i++) {
+		int y0 = i * kMenuRowH;
+		if (i > 0) {
+			cv.rect(6, y0 + 4, kMenuW - 6, y0 + kMenuRowH - 4, 30, 20, 12);
+			cv.rect(7, y0 + 5, kMenuW - 7, y0 + kMenuRowH - 5, 96, 72, 46);
+			cv.rect(7, y0 + 5, kMenuW - 7, y0 + 7, 140, 108, 72);
+		}
+		int tw = (int)rows[i].size() * 8;
+		if (i == 0)
+			cv.text(rows[i], (kMenuW - tw) / 2, y0 + 14, 1, 255, 205, 110);
+		else
+			cv.text(rows[i], (kMenuW - tw) / 2, y0 + 14, 1, 250, 236, 200);
+	}
+	upload(menuTex, cv.px, kMenuW, kMenuH);
+	menuDirty = false;
 }
 
 Ui::Ui() : d(new Impl()) {
@@ -309,10 +421,18 @@ void Ui::initGl(bool srgb) {
 	d->kbDirty = true;
 }
 
-void Ui::setOptions(bool fireOn, bool detached, bool table) {
-	if (fireOn != d->fireOn || detached != d->detached || table != d->tableOn)
+void Ui::setLanguage(int language) {
+	if (language != d->language) {
+		d->language = language;
 		d->kbDirty = true;
-	d->tableOn = table;
+		d->helpDirty = true;
+		d->menuDirty = true;
+	}
+}
+
+void Ui::setOptions(bool fireOn, bool detached) {
+	if (fireOn != d->fireOn || detached != d->detached)
+		d->kbDirty = true;
 	d->fireOn = fireOn;
 	d->detached = detached;
 }
@@ -373,7 +493,7 @@ void Ui::resetLayout(const UiFrameInput &in) {
 
 namespace {
 
-// Garde un panneau dans la bibliothèque : au-dessus du plancher et de la table, devant les murs.
+// Garde un panneau dans la bibliothèque : au-dessus du plancher, devant les murs.
 Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	Quat q = quatYaw(in.roomYaw);
 	Vec3 p = rotate(conjugate(q), c - in.roomPos);
@@ -381,8 +501,6 @@ Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	p.x = clampf(p.x, -mx, mx);
 	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
 	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
-	if (in.table && fabsf(p.x - in.tableX) < kTableHalfW * in.tableScale + hw && fabsf(p.z - in.tableZ) < kTableHalfD * in.tableScale + 0.08f)
-		lo = kTableTop * in.tableScale + hh + 0.03f;
 	if (hi < lo)
 		hi = lo;
 	p.y = clampf(p.y, lo, hi);
@@ -399,8 +517,12 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		scene.handles[i].visible = false;
 	if (d->kbDirty)
 		d->renderKeyboard();
-	if (!d->helpTex)
+	if (d->helpDirty || !d->helpTex)
 		d->renderHelp();
+	if (!d->gearTex)
+		d->renderGear();
+	if (d->menuDirty || !d->menuTex)
+		d->renderMenu();
 	d->pressFlash -= in.dt;
 
 	// Tant que la disposition n'est pas établie (écran pas encore placé), aucun panneau.
@@ -410,7 +532,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	visible[kPanelKeyboard] = placed && in.keyboardOpen;
 	visible[kPanelHelp] = placed && in.helpOpen;
 	auto isPanel = [](int target) { return target >= 0 && target < kUiPanelCount; };
-	Quat roomRot = quatYaw(in.roomYaw);
 
 	Vec3 screenR = rotate(in.screenRot, {1, 0, 0}), screenU = rotate(in.screenRot, {0, 1, 0}), screenN = rotate(in.screenRot, {0, 0, 1});
 	Quat screenInv = conjugate(in.screenRot);
@@ -419,7 +540,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		screenDist = 0.3f;
 	// --- 1. Poignée tenue : l'objet suit le rayon du doigt ---
 	if (d->drag != -1) {
-		bool gone = (isPanel(d->drag) && !visible[d->drag]) || (d->drag == Impl::kTableTarget && !in.tableHandle);
+		bool gone = isPanel(d->drag) && !visible[d->drag];
 		if (!in.triggerDown || !in.aimValid || gone) {
 			d->drag = -1;
 			out.released = true;
@@ -432,20 +553,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenDragging = true;
 				out.screenCenter = c;
 				out.screenZoom = expf(in.stickX * 0.9f * in.dt);
-			} else if (d->drag == Impl::kTableTarget) {
-				// La table glisse sur le plancher, là où le doigt pointe (à la hauteur de sa barrette) ;
-				// le joystick (gauche/droite) change sa taille.
-				float planeY = in.roomPos.y + kTableTop * in.tableScale + 0.16f;
-				if (in.dir.y < -0.05f) {
-					float t = clampf((planeY - in.tip.y) / in.dir.y, 0.1f, 6.0f);
-					c = in.tip + in.dir * t + d->grabOffset;
-				}
-				Vec3 p = rotate(conjugate(roomRot), c - in.roomPos);
-				out.tableMoved = true;
-				out.tableScale = clampf(in.tableScale * expf(in.stickX * 0.9f * in.dt), 0.5f, 1.6f);
-				float mx = kRoomHalfX - 0.45f - kTableHalfW * out.tableScale;
-				out.tableX = clampf(p.x, -fmaxf(mx, 0.0f), fmaxf(mx, 0.0f));
-				out.tableZ = clampf(p.z, kRoomFrontZ + 0.75f, kRoomBackZ - 0.55f);
 			} else {
 				UiPlacement &pl = placement[d->drag];
 				Vec3 v = c - in.anchorPos;
@@ -467,9 +574,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	}
 
 	// --- 2. Pose des panneaux et de leurs poignées ---
-	// Poignées : une par panneau, puis celle de l'écran, puis celle de la table.
-	const int kHandleScreen = kUiPanelCount, kHandleTable = kUiPanelCount + 1, kHandleCount = kUiPanelCount + 2;
-	Quad content[kUiPanelCount], handle[kUiPanelCount + 2];
+	// Poignées : une par panneau, puis celle de l'écran.
+	const int kHandleScreen = kUiPanelCount, kHandleCount = kUiPanelCount + 1;
+	Quad content[kUiPanelCount], handle[kUiPanelCount + 1];
 	float panelDist[kUiPanelCount];
 	for (int i = 0; i < kUiPanelCount; i++) {
 		const UiPlacement &pl = placement[i];
@@ -525,22 +632,35 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		hq.c = in.screenPos + screenU * (top + hq.hh) + screenN * (in.crt ? -0.02f * in.dispW : 0.02f * in.dispW);
 	}
 
-	// Poignée de la table : une barrette qui flotte au-dessus du plateau, tournée vers le joueur.
-	Vec3 tableBase = in.roomPos + rotate(roomRot, {in.tableX, 0.0f, in.tableZ});
-	{
-		Quad &hq = handle[kHandleTable];
-		hq.c = tableBase + Vec3{0, kTableTop * in.tableScale + 0.16f, 0};
-		Vec3 v = hq.c - in.anchorPos;
-		float dist = fmaxf(length(v), 0.15f);
-		Vec3 n = v * (-1.0f / dist);
-		Vec3 r = cross({0, 1, 0}, n);
-		float rl = length(r);
-		hq.r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
-		hq.u = cross(n, hq.r);
-		hq.hh = clampf(0.020f * dist, 0.008f, 0.06f);
-		hq.hw = clampf(0.11f * dist, 0.03f, 0.35f);
+	auto handleShown = [&](int i) { return i == kHandleScreen ? true : visible[i]; };
+
+	// Menu du poignet : l'engrenage apparaît sur la main gauche quand on la regarde de près.
+	bool gearVisible = false;
+	Quad gearQ, menuQ;
+	if (placed && in.wristValid) {
+		Vec3 c = in.wristPos + rotate(in.wristRot, {0.0f, 0.075f, 0.06f});
+		Vec3 v = c - in.headPos;
+		float dist = length(v);
+		if (dist > 0.12f && dist < 0.85f && dot(v * (1.0f / dist), in.headDir) > 0.86f) {
+			gearVisible = true;
+			Vec3 n = v * (-1.0f / dist);
+			Vec3 r = cross({0, 1, 0}, n);
+			float rl = length(r);
+			gearQ.c = c;
+			gearQ.r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
+			gearQ.u = cross(n, gearQ.r);
+			gearQ.hw = gearQ.hh = 0.026f;
+		}
 	}
-	auto handleShown = [&](int i) { return i == kHandleScreen ? true : i == kHandleTable ? in.tableHandle : visible[i]; };
+	const float kMenuScale = 0.0009f;
+	if (d->menuOpen) {
+		menuQ.c = d->menuPos;
+		menuQ.r = d->menuRight;
+		menuQ.u = d->menuUp;
+		menuQ.hw = kMenuW * kMenuScale * 0.5f;
+		menuQ.hh = kMenuH * kMenuScale * 0.5f;
+	}
+	d->menuHot = -1;
 
 	// Coins : une zone de prise juste à l'extérieur de chaque fenêtre (sur le cadre, pour l'écran).
 	Quad screenQuad;
@@ -578,7 +698,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	}
 
 	// --- 3. Que vise le doigt ? ---
-	enum { kHitNone, kHitHandle, kHitPanel, kHitScreen, kHitCorner };
+	enum { kHitNone, kHitHandle, kHitPanel, kHitScreen, kHitCorner, kHitWrist };
 	int hitKind = kHitNone, hitIndex = -1;
 	float bestT = 1e9f, hx = 0, hy = 0;
 	// Repli : quand le doigt passe juste à côté d'une fenêtre, on prend la plus proche.
@@ -616,6 +736,15 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 					nearExcess = e; nearKind = kHitPanel; nearIndex = i; nearT = t;
 					nearX = clampf(x, -1.0f, 1.0f); nearY = clampf(y, -1.0f, 1.0f);
 				}
+			}
+		}
+		// L'engrenage et le menu du poignet
+		for (int w = 0; w < 2; w++) {
+			if (w == 0 ? !gearVisible : !d->menuOpen)
+				continue;
+			float t, x, y;
+			if (rayQuad(in.tip, in.dir, w == 0 ? gearQ : menuQ, t, x, y) && fabsf(x) <= 1.0f && fabsf(y) <= 1.0f && t < bestT) {
+				bestT = t; hitKind = kHitWrist; hitIndex = w; hx = x; hy = y;
 			}
 		}
 		// L'écran principal (la dalle du moniteur cathodique est bombée : on affine le point d'impact)
@@ -681,12 +810,12 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		}
 	}
 
-	float handleGlow[kUiPanelCount + 2];
+	float handleGlow[kUiPanelCount + 1];
 	for (int i = 0; i < kHandleCount; i++)
 		handleGlow[i] = 0.0f;
 	if (d->drag != -1)
-		handleGlow[d->drag == Impl::kScreenTarget ? kHandleScreen : d->drag == Impl::kTableTarget ? kHandleTable : d->drag] = 1.0f;
-	out.pointerLong = hitKind != kHitScreen && hitKind != kHitPanel;
+		handleGlow[d->drag == Impl::kScreenTarget ? kHandleScreen : d->drag] = 1.0f;
+	out.pointerLong = hitKind != kHitScreen && hitKind != kHitPanel && hitKind != kHitWrist;
 
 	if (hitKind == kHitScreen && screenHitOk) {
 		out.pointerValid = true;
@@ -707,9 +836,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		out.hitUp = hq.u;
 		out.hitRadius = 0.016f * bestT;
 		if (in.triggerPressed) {
-			d->drag = hitIndex == kHandleScreen ? Impl::kScreenTarget : hitIndex == kHandleTable ? Impl::kTableTarget : hitIndex;
+			d->drag = hitIndex == kHandleScreen ? Impl::kScreenTarget : hitIndex;
 			d->grabDist = bestT;
-			d->grabOffset = (hitIndex == kHandleScreen ? in.screenPos : hitIndex == kHandleTable ? tableBase : content[hitIndex].c) - p;
+			d->grabOffset = (hitIndex == kHandleScreen ? in.screenPos : content[hitIndex].c) - p;
 			handleGlow[hitIndex] = 1.0f;
 			out.grabbed = true;
 			out.dragging = true;
@@ -732,6 +861,38 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			d->resizeRef = clampf(cornerK, 0.3f, 3.0f);
 			out.grabbed = true;
 			out.dragging = true;
+		}
+	} else if (hitKind == kHitWrist) {
+		const Quad &q = hitIndex == 0 ? gearQ : menuQ;
+		out.hitValid = true;
+		out.hit = q.c + q.r * (hx * q.hw) + q.u * (hy * q.hh) + cross(q.r, q.u) * 0.001f;
+		out.hitRight = q.r;
+		out.hitUp = q.u;
+		out.hitRadius = 0.010f * bestT;
+		if (hitIndex == 0) {
+			if (in.triggerPressed) {
+				// Le menu s'ouvre au-dessus de la main et reste là.
+				d->menuOpen = !d->menuOpen;
+				d->menuPos = gearQ.c + gearQ.u * (kMenuH * kMenuScale * 0.5f + 0.05f);
+				d->menuRight = gearQ.r;
+				d->menuUp = gearQ.u;
+				out.clicked = true;
+			}
+		} else {
+			int row = (int)((1.0f - hy) * 0.5f * (float)kMenuRows);
+			row = row < 0 ? 0 : row >= kMenuRows ? kMenuRows - 1 : row;
+			d->menuHot = row;
+			if (in.triggerPressed && row >= 1) {
+				out.clicked = true;
+				if (row == 1) {
+					out.action = kUiActionToggleLanguage;
+				} else if (row == 2) {
+					out.action = kUiActionToggleHelp;
+					d->menuOpen = false;
+				} else {
+					d->menuOpen = false;
+				}
+			}
 		}
 	} else if (hitKind == kHitPanel) {
 		const Quad &q = content[hitIndex];
@@ -831,6 +992,29 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 					p.hot[3] = (in.partyMark[1] + in.partyMark[3]) / 200.0f;
 				}
 			}
+		}
+	}
+	for (int w = 0; w < 2; w++) {
+		if ((w == 0 ? !gearVisible : !d->menuOpen) || np >= SceneState::kMaxPanels)
+			continue;
+		const Quad &q = w == 0 ? gearQ : menuQ;
+		SceneState::Panel &p = scene.panels[np++];
+		p = SceneState::Panel();
+		p.visible = true;
+		p.center = q.c;
+		p.right = q.r;
+		p.up = q.u;
+		p.halfW = q.hw;
+		p.halfH = q.hh;
+		p.border = 0.004f;
+		p.texture = w == 0 ? d->gearTex : d->menuTex;
+		p.texW = w == 0 ? kGearSize : kMenuW;
+		p.texH = w == 0 ? kGearSize : kMenuH;
+		if (w == 1 && d->menuHot >= 1) {
+			p.hot[0] = 0.0f;
+			p.hot[1] = (float)d->menuHot / (float)kMenuRows;
+			p.hot[2] = 1.0f;
+			p.hot[3] = (float)(d->menuHot + 1) / (float)kMenuRows;
 		}
 	}
 	for (int i = 0; i < kHandleCount; i++) {

@@ -1,9 +1,9 @@
-name: Compiler l'APK
+name: Build the APK
 
-# Chaque envoi de code est compilé pour vérifier qu'il fonctionne.
-# Une version est publiée quand le fichier VERSION de la branche main contient un
-# numéro dont la publication « vX.Y.Z » n'existe pas encore (ou quand on crée
-# une étiquette « vX.Y.Z »). L'APK est joint et les notes viennent de CHANGELOG.md.
+# Every push is built to check that it works.
+# A version is published when the VERSION file of the main branch holds a number
+# whose "vX.Y.Z" release doesn't exist yet (or when a "vX.Y.Z" tag is pushed).
+# The APK is attached and the notes come from CHANGELOG.md.
 on:
   push:
     branches: ['**']
@@ -24,12 +24,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Récupérer le code
+      - name: Get the code
         run: |
           git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" .
           git checkout --quiet "${GITHUB_SHA}"
 
-      - name: Déterminer la version
+      - name: Work out the version
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -47,16 +47,16 @@ jobs:
             echo "PUBLIER=non" >> "$GITHUB_ENV"
           fi
 
-      - name: Construire l'APK
+      - name: Build the APK
         run: |
           export LOLVR_VERSION_CODE="${GITHUB_RUN_NUMBER}"
           export LOLVR_VERSION_NAME="${VERSION}"
           scripts/build.sh
 
-      - name: Publier la version
+      - name: Publish the version
         if: env.PUBLIER == 'oui'
         run: |
-          # Notes = la section « ## [X.Y.Z] » du CHANGELOG.md
+          # Notes = the "## [X.Y.Z]" section of CHANGELOG.md
           awk -v v="[$VERSION]" '
             /^## / { if (found) exit; if (index($0, v)) { found = 1; next } }
             found { print }
@@ -65,6 +65,21 @@ jobs:
             echo "Version ${VERSION}." > notes.md
           fi
           echo "" >> notes.md
-          echo "Installation : téléchargez \`lol-vr.apk\` ci-dessous et installez-le avec SideQuest, par-dessus l'ancienne version (les sauvegardes sont conservées)." >> notes.md
+          echo "Installation: download \`lol-vr.apk\` below and install it with SideQuest, over the previous version (saves are kept)." >> notes.md
           gh release create "v${VERSION}" build/lol-vr.apk --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Lands of Lore VR ${VERSION}" --notes-file notes.md --latest
+
+      - name: Sync the notes of every release with CHANGELOG.md
+        if: github.ref == 'refs/heads/main'
+        run: |
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' | grep '^v'); do
+            V="${tag#v}"
+            awk -v v="[$V]" '
+              /^## / { if (found) exit; if (index($0, v)) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md > sync.md
+            [ -s sync.md ] || continue
+            echo "" >> sync.md
+            echo "Installation: download \`lol-vr.apk\` below and install it with SideQuest, over the previous version (saves are kept)." >> sync.md
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "Lands of Lore VR ${V}" --notes-file sync.md > /dev/null
+          done
