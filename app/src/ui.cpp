@@ -29,7 +29,9 @@ struct Source {
 };
 
 // Clavier : grille de 11 colonnes sur 6 rangées.
-const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 6;
+const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 7;
+// Panneau d'aide
+const int kHelpW = 584, kHelpH = 470;
 const int kInfoH = 44; // deux lignes d'information sous les touches
 const int kKbW = kCellW * kCols, kKbH = kCellH * kRows + kInfoH;
 
@@ -40,11 +42,12 @@ const Source kSources[kUiPanelCount] = {
 	{0, 128, 84, 72},    // flèches, options, repos
 	{288, 0, 32, 122},   // colonne de droite (boussole, atlas, lampe, bourse)
 	{0, 0, (float)kKbW, (float)kKbH},
+	{0, 0, (float)kHelpW, (float)kHelpH},
 };
 
 // Les pixels du jeu sont 1,2 fois plus hauts que larges ; ceux du clavier sont carrés.
 float pixelAspect(int id) {
-	return id == kPanelKeyboard ? 1.0f : 1.2f;
+	return id >= kPanelKeyboard ? 1.0f : 1.2f;
 }
 
 struct Key {
@@ -128,7 +131,9 @@ struct Ui::Impl {
 	int pressKey = -1;
 
 	// Poignée tenue : -1 aucune, 0..kUiPanelCount-1 un panneau, kScreenTarget l'écran.
-	static const int kScreenTarget = 100;
+	static const int kScreenTarget = 100, kTableTarget = 101;
+	GLuint helpTex = 0;
+	void renderHelp();
 	int drag = -1;
 	float grabDist = 1.0f;
 	Vec3 grabOffset = {0, 0, 0};
@@ -169,6 +174,7 @@ void Ui::Impl::buildKeys() {
 	keys.push_back({0, 5, 2, "\xC9" "chap", "", 27, kUiActionNone});
 	keys.push_back({2, 5, 6, "Espace", "", ' ', kUiActionNone});
 	keys.push_back({8, 5, 3, "Entr\xE9" "e", "", 13, kUiActionNone});
+	keys.push_back({0, 6, 11, "Aide : les manettes et les boutons", "", 0, kUiActionToggleHelp});
 }
 
 void Ui::Impl::renderKeyboard() {
@@ -180,7 +186,7 @@ void Ui::Impl::renderKeyboard() {
 	for (size_t i = 0; i < keys.size(); i++) {
 		const Key &k = keys[i];
 		int x0 = k.col * kCellW + 2, y0 = k.row * kCellH + 2, x1 = (k.col + k.span) * kCellW - 2, y1 = (k.row + 1) * kCellH - 2;
-		bool option = k.row == 0;
+		bool option = k.row == 0 || k.row == 6;
 		bool lit = (k.action == -1 && shift) || (k.action == kUiActionToggleFire && fireOn) || (k.action == kUiActionToggleDetach && detached) || (k.action == kUiActionToggleTable && tableOn);
 		// Touche en relief : bord clair en haut, sombre en bas
 		cv.rect(x0, y0, x1, y1, 30, 20, 12);
@@ -212,6 +218,79 @@ void Ui::Impl::renderKeyboard() {
 	kbDirty = false;
 }
 
+// Texte UTF-8 -> Latin-1 (la police du clavier).
+static std::string latin1(const char *utf8) {
+	std::string out;
+	for (const unsigned char *p = (const unsigned char *)utf8; *p; p++) {
+		if (*p < 0x80)
+			out += (char)*p;
+		else if ((*p == 0xC2 || *p == 0xC3) && p[1]) {
+			out += (char)(*p == 0xC3 ? p[1] + 0x40 : p[1]);
+			p++;
+		} else {
+			out += '?';
+			while ((p[1] & 0xC0) == 0x80)
+				p++;
+		}
+	}
+	return out;
+}
+
+void Ui::Impl::renderHelp() {
+	static const char *const lines[] = {
+		"#LES MANETTES ET LES BOUTONS",
+		"",
+		"#Partout",
+		"Viser + gâchette ......... clic gauche",
+		"Viser + poignée .......... clic droit",
+		"Joystick gauche .......... avancer, reculer, pas de côté",
+		"Joystick droit (côtés) ... tourner",
+		"Y : carte      X : clavier, options et cette aide",
+		"Bouton menu (gauche) ..... sauvegarder, charger, quitter",
+		"",
+		"#Combat, dans le donjon",
+		"A ........................ attaquer avec le personnage encadré",
+		"B ........................ ouvrir sa magie, puis viser le sort",
+		"Joystick droit (haut/bas)  changer de personnage",
+		"Utiliser un objet : cliquer l'objet, puis le portrait",
+		"",
+		"#Menus et cinématiques",
+		"A : Entrée      B : Échap (passer)",
+		"",
+		"#Fenêtres, écran et table",
+		"Barrette de laiton + gâchette tenue ... déplacer",
+		"Coin (équerre) + gâchette tenue ....... agrandir, réduire",
+		"Clic du joystick droit ... tout recentrer devant soi",
+		"Clic du joystick gauche .. changer de décor",
+		"",
+		"Cliquer ce panneau pour le fermer.",
+	};
+	Canvas cv{kHelpW, kHelpH, std::vector<uint8_t>((size_t)kHelpW * kHelpH * 4)};
+	cv.rect(0, 0, kHelpW, kHelpH, 30, 21, 14);
+	int y = 10;
+	for (const char *line : lines) {
+		bool title = line[0] == '#';
+		std::string text = latin1(title ? line + 1 : line);
+		if (title) {
+			cv.rect(8, y + 16, kHelpW - 8, y + 17, 150, 104, 40);
+			cv.text(text, 12, y - 1, 1, 255, 205, 110);
+		} else {
+			cv.text(text, 20, y, 1, 240, 228, 196);
+		}
+		y += text.empty() ? 8 : 18;
+	}
+	if (!helpTex)
+		glGenTextures(1, &helpTex);
+	glBindTexture(GL_TEXTURE_2D, helpTex);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, kHelpW, kHelpH, 0, GL_RGBA, GL_UNSIGNED_BYTE, cv.px.data());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 Ui::Ui() : d(new Impl()) {
 	d->buildKeys();
 }
@@ -221,7 +300,7 @@ Ui::~Ui() {
 }
 
 const char *Ui::panelKey(int id) {
-	static const char *names[kUiPanelCount] = {"groupe", "inventaire", "sorts", "commandes", "boussole", "clavier"};
+	static const char *names[kUiPanelCount] = {"groupe", "inventaire", "sorts", "commandes", "boussole", "clavier", "aide"};
 	return id >= 0 && id < kUiPanelCount ? names[id] : "";
 }
 
@@ -243,6 +322,11 @@ void Ui::setInfo(const std::string &line1, const std::string &line2) {
 		d->kbDirty = true;
 	d->info[0] = line1;
 	d->info[1] = line2;
+}
+
+UiPlacement Ui::defaultHelpPlacement(float yaw) {
+	// Devant soi, à hauteur des yeux, bien lisible.
+	return {yaw, 0.03f, 1.05f, 0.0013f};
 }
 
 void Ui::resetLayout(const UiFrameInput &in) {
@@ -283,6 +367,7 @@ void Ui::resetLayout(const UiFrameInput &in) {
 	Vec3 v = in.basePos - in.anchorPos;
 	float screenYaw = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
 	placement[kPanelKeyboard] = {screenYaw, -29.0f * 3.14159265f / 180.0f, 0.58f, 0.0011f};
+	placement[kPanelHelp] = defaultHelpPlacement(screenYaw);
 	placed = true;
 }
 
@@ -296,8 +381,8 @@ Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	p.x = clampf(p.x, -mx, mx);
 	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
 	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
-	if (in.table && fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
-		lo = kTableTop + hh + 0.03f;
+	if (in.table && fabsf(p.x - in.tableX) < kTableHalfW * in.tableScale + hw && fabsf(p.z - in.tableZ) < kTableHalfD * in.tableScale + 0.08f)
+		lo = kTableTop * in.tableScale + hh + 0.03f;
 	if (hi < lo)
 		hi = lo;
 	p.y = clampf(p.y, lo, hi);
@@ -314,6 +399,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		scene.handles[i].visible = false;
 	if (d->kbDirty)
 		d->renderKeyboard();
+	if (!d->helpTex)
+		d->renderHelp();
 	d->pressFlash -= in.dt;
 
 	// Tant que la disposition n'est pas établie (écran pas encore placé), aucun panneau.
@@ -321,6 +408,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	for (int i = 0; i <= kPanelCompass; i++)
 		visible[i] = placed && in.split;
 	visible[kPanelKeyboard] = placed && in.keyboardOpen;
+	visible[kPanelHelp] = placed && in.helpOpen;
+	auto isPanel = [](int target) { return target >= 0 && target < kUiPanelCount; };
+	Quat roomRot = quatYaw(in.roomYaw);
 
 	Vec3 screenR = rotate(in.screenRot, {1, 0, 0}), screenU = rotate(in.screenRot, {0, 1, 0}), screenN = rotate(in.screenRot, {0, 0, 1});
 	Quat screenInv = conjugate(in.screenRot);
@@ -329,7 +419,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		screenDist = 0.3f;
 	// --- 1. Poignée tenue : l'objet suit le rayon du doigt ---
 	if (d->drag != -1) {
-		bool gone = d->drag != Impl::kScreenTarget && !visible[d->drag];
+		bool gone = (isPanel(d->drag) && !visible[d->drag]) || (d->drag == Impl::kTableTarget && !in.tableHandle);
 		if (!in.triggerDown || !in.aimValid || gone) {
 			d->drag = -1;
 			out.released = true;
@@ -342,6 +432,20 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenDragging = true;
 				out.screenCenter = c;
 				out.screenZoom = expf(in.stickX * 0.9f * in.dt);
+			} else if (d->drag == Impl::kTableTarget) {
+				// La table glisse sur le plancher, là où le doigt pointe (à la hauteur de sa barrette) ;
+				// le joystick (gauche/droite) change sa taille.
+				float planeY = in.roomPos.y + kTableTop * in.tableScale + 0.16f;
+				if (in.dir.y < -0.05f) {
+					float t = clampf((planeY - in.tip.y) / in.dir.y, 0.1f, 6.0f);
+					c = in.tip + in.dir * t + d->grabOffset;
+				}
+				Vec3 p = rotate(conjugate(roomRot), c - in.roomPos);
+				out.tableMoved = true;
+				out.tableScale = clampf(in.tableScale * expf(in.stickX * 0.9f * in.dt), 0.5f, 1.6f);
+				float mx = kRoomHalfX - 0.45f - kTableHalfW * out.tableScale;
+				out.tableX = clampf(p.x, -fmaxf(mx, 0.0f), fmaxf(mx, 0.0f));
+				out.tableZ = clampf(p.z, kRoomFrontZ + 0.75f, kRoomBackZ - 0.55f);
 			} else {
 				UiPlacement &pl = placement[d->drag];
 				Vec3 v = c - in.anchorPos;
@@ -354,7 +458,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	}
 	// Coin tenu : relâché ?
 	if (d->resize != -1) {
-		bool gone = d->resize != Impl::kScreenTarget && !visible[d->resize];
+		bool gone = isPanel(d->resize) && !visible[d->resize];
 		if (!in.triggerDown || !in.aimValid || gone) {
 			d->resize = -1;
 			out.released = true;
@@ -363,7 +467,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	}
 
 	// --- 2. Pose des panneaux et de leurs poignées ---
-	Quad content[kUiPanelCount], handle[kUiPanelCount + 1];
+	// Poignées : une par panneau, puis celle de l'écran, puis celle de la table.
+	const int kHandleScreen = kUiPanelCount, kHandleTable = kUiPanelCount + 1, kHandleCount = kUiPanelCount + 2;
+	Quad content[kUiPanelCount], handle[kUiPanelCount + 2];
 	float panelDist[kUiPanelCount];
 	for (int i = 0; i < kUiPanelCount; i++) {
 		const UiPlacement &pl = placement[i];
@@ -393,8 +499,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		float thick = clampf(0.017f * dist, 0.008f, 0.06f), longSide = clampf(0.10f * dist, 0.03f, 0.35f);
 		hq.r = q.r;
 		hq.u = q.u;
-		if (i == kPanelKeyboard) {
-			// Clavier : barrette au-dessus.
+		if (i >= kPanelKeyboard) {
+			// Clavier, aide : barrette au-dessus.
 			hq.hh = thick;
 			hq.hw = fminf(q.hw, longSide);
 			hq.c = q.c + q.u * (q.hh + border + hq.hh + 0.002f);
@@ -418,6 +524,23 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		float top = in.crt ? 0.50f * in.dispW : in.dispH * 0.5f + 0.165f * in.dispW;
 		hq.c = in.screenPos + screenU * (top + hq.hh) + screenN * (in.crt ? -0.02f * in.dispW : 0.02f * in.dispW);
 	}
+
+	// Poignée de la table : une barrette qui flotte au-dessus du plateau, tournée vers le joueur.
+	Vec3 tableBase = in.roomPos + rotate(roomRot, {in.tableX, 0.0f, in.tableZ});
+	{
+		Quad &hq = handle[kHandleTable];
+		hq.c = tableBase + Vec3{0, kTableTop * in.tableScale + 0.16f, 0};
+		Vec3 v = hq.c - in.anchorPos;
+		float dist = fmaxf(length(v), 0.15f);
+		Vec3 n = v * (-1.0f / dist);
+		Vec3 r = cross({0, 1, 0}, n);
+		float rl = length(r);
+		hq.r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
+		hq.u = cross(n, hq.r);
+		hq.hh = clampf(0.020f * dist, 0.008f, 0.06f);
+		hq.hw = clampf(0.11f * dist, 0.03f, 0.35f);
+	}
+	auto handleShown = [&](int i) { return i == kHandleScreen ? true : i == kHandleTable ? in.tableHandle : visible[i]; };
 
 	// Coins : une zone de prise juste à l'extérieur de chaque fenêtre (sur le cadre, pour l'écran).
 	Quad screenQuad;
@@ -467,8 +590,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	int cornerTarget = -1;
 	float cornerSx = 1.0f, cornerSy = 1.0f, cornerK = 1.0f;
 	if (in.aimValid && d->drag == -1 && d->resize == -1) {
-		for (int i = 0; i <= kUiPanelCount; i++) {
-			if (i < kUiPanelCount && !visible[i])
+		for (int i = 0; i < kHandleCount; i++) {
+			if (!handleShown(i))
 				continue;
 			float t, x, y;
 			// Zone de prise un peu plus généreuse que la poignée dessinée
@@ -558,11 +681,11 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		}
 	}
 
-	float handleGlow[kUiPanelCount + 1];
-	for (int i = 0; i <= kUiPanelCount; i++)
+	float handleGlow[kUiPanelCount + 2];
+	for (int i = 0; i < kHandleCount; i++)
 		handleGlow[i] = 0.0f;
 	if (d->drag != -1)
-		handleGlow[d->drag == Impl::kScreenTarget ? kUiPanelCount : d->drag] = 1.0f;
+		handleGlow[d->drag == Impl::kScreenTarget ? kHandleScreen : d->drag == Impl::kTableTarget ? kHandleTable : d->drag] = 1.0f;
 	out.pointerLong = hitKind != kHitScreen && hitKind != kHitPanel;
 
 	if (hitKind == kHitScreen && screenHitOk) {
@@ -584,9 +707,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		out.hitUp = hq.u;
 		out.hitRadius = 0.016f * bestT;
 		if (in.triggerPressed) {
-			d->drag = hitIndex == kUiPanelCount ? Impl::kScreenTarget : hitIndex;
+			d->drag = hitIndex == kHandleScreen ? Impl::kScreenTarget : hitIndex == kHandleTable ? Impl::kTableTarget : hitIndex;
 			d->grabDist = bestT;
-			d->grabOffset = (hitIndex == kUiPanelCount ? in.screenPos : content[hitIndex].c) - p;
+			d->grabOffset = (hitIndex == kHandleScreen ? in.screenPos : hitIndex == kHandleTable ? tableBase : content[hitIndex].c) - p;
 			handleGlow[hitIndex] = 1.0f;
 			out.grabbed = true;
 			out.dragging = true;
@@ -618,7 +741,12 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		out.hitUp = q.u;
 		out.hitRadius = 0.010f * bestT;
 		float u = (hx + 1.0f) * 0.5f, v = (1.0f - hy) * 0.5f;
-		if (hitIndex == kPanelKeyboard) {
+		if (hitIndex == kPanelHelp) {
+			if (in.triggerPressed) {
+				out.action = kUiActionCloseHelp;
+				out.clicked = true;
+			}
+		} else if (hitIndex == kPanelKeyboard) {
 			int col = (int)(u * (float)kCols), row = (int)(v * (float)kKbH / (float)kCellH);
 			for (size_t k = 0; k < d->keys.size(); k++) {
 				const Key &key = d->keys[k];
@@ -673,7 +801,11 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			p.halfW = q.hw;
 			p.halfH = q.hh;
 			p.border = clampf(0.012f * panelDist[i], 0.004f, 0.012f);
-			if (i == kPanelKeyboard) {
+			if (i == kPanelHelp) {
+				p.texture = d->helpTex;
+				p.texW = kHelpW;
+				p.texH = kHelpH;
+			} else if (i == kPanelKeyboard) {
 				p.texture = d->kbTex;
 				p.texW = kKbW;
 				p.texH = kKbH;
@@ -692,6 +824,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				p.v1 = (src.y + src.h) / 200.0f;
 				p.blank = i == kPanelCompass && in.compassBlank;
 				if (i == kPanelParty && in.partyMark[2] > 0.0f) {
+					p.hotOutline = true;
 					p.hot[0] = in.partyMark[0] / 320.0f;
 					p.hot[1] = in.partyMark[1] / 200.0f;
 					p.hot[2] = (in.partyMark[0] + in.partyMark[2]) / 320.0f;
@@ -700,8 +833,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			}
 		}
 	}
-	for (int i = 0; i <= kUiPanelCount; i++) {
-		if ((i < kUiPanelCount && !visible[i]) || nh >= SceneState::kMaxHandles)
+	for (int i = 0; i < kHandleCount; i++) {
+		if (!handleShown(i) || nh >= SceneState::kMaxHandles)
 			continue;
 		SceneState::Handle &h = scene.handles[nh++];
 		const Quad &hq = handle[i];

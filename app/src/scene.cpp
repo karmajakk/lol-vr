@@ -319,10 +319,18 @@ void main() {
 		vec2 fpp = (tc - clamp(tc, -region, region)) * 4.0 + 0.5;
 		vec2 p = (ti + fpp) / uGameSize;
 		c = texture(uGame, clamp(p, uRect.xy, uRect.zw)).rgb;
-		if (uGlow > 0.5)
+		if (uGlow > 0.5 && uGlow < 1.5)
 			c = vec3(0.0);
-		if (vUv.x > uHot.x && vUv.x < uHot.z && vUv.y > uHot.y && vUv.y < uHot.w)
-			c = mix(c, vec3(1.0, 0.80, 0.40), 0.30) + vec3(0.06, 0.04, 0.0);
+		if (vUv.x > uHot.x && vUv.x < uHot.z && vUv.y > uHot.y && vUv.y < uHot.w) {
+			if (uGlow > 1.5) {
+				// Simple encadré jaune, épais d'un pixel et demi du jeu
+				vec2 edge = min(vUv - uHot.xy, uHot.zw - vUv) * uGameSize;
+				if (min(edge.x, edge.y) < 1.5)
+					c = vec3(1.0, 0.85, 0.20);
+			} else {
+				c = mix(c, vec3(1.0, 0.80, 0.40), 0.30) + vec3(0.06, 0.04, 0.0);
+			}
+		}
 	}
 	oColor = vec4(c * uAlpha, uAlpha);
 }
@@ -468,6 +476,7 @@ struct Scene::Impl {
 	};
 	std::vector<PanelDraw> panelDraws;
 	float frameAspect = 0.75f;
+	double lastRebuild = -1.0;
 	Mat4 holeMat;
 	RoomOptions roomOptions;
 	bool roomDirty = false;
@@ -550,16 +559,20 @@ void Scene::Impl::rebuildRoom() {
 	SCENE_LOG("décor prêt (thème %s, %d sommets)", themeInfo(loadedTheme).name, (int)solid.verts.size());
 }
 
-void Scene::setTable(bool on) {
-	if (d->roomOptions.table != on) {
-		d->roomOptions.table = on;
+void Scene::setTable(bool on, float x, float z, float scale) {
+	RoomOptions &o = d->roomOptions;
+	if (o.table != on || fabsf(o.tableX - x) > 1e-3f || fabsf(o.tableZ - z) > 1e-3f || fabsf(o.tableScale - scale) > 1e-3f) {
+		o.table = on;
+		o.tableX = x;
+		o.tableZ = z;
+		o.tableScale = scale;
 		d->roomDirty = true;
 	}
 }
 
 // Copie une image du joueur dans deux couches du tableau de textures (moitié gauche, moitié droite).
 void Scene::setImage(int slot, const unsigned char *rgba, int w, int h) {
-	if (slot < 0 || slot > 3 || !rgba || w < 2 || h < 2 || !d->texArray)
+	if (slot < 0 || slot > 5 || !rgba || w < 2 || h < 2 || !d->texArray)
 		return;
 	const int base = kTexImgWindowA + slot * 2;
 	const int N = kTexSize;
@@ -866,8 +879,11 @@ void Scene::prepare(const SceneState &s) {
 	}
 	if (!d->job && d->texturesReady && s.theme != d->loadedTheme && s.theme >= 0 && s.theme < kThemeCount)
 		d->startJob(s.theme, false);
-	if (!d->job && d->texturesReady && d->roomDirty)
+	// Pas plus d'une reconstruction tous les 80 ms (table tenue à la main).
+	if (!d->job && d->texturesReady && d->roomDirty && fabs(s.time - d->lastRebuild) > 0.08) {
+		d->lastRebuild = s.time;
 		d->rebuildRoom();
+	}
 
 	// Le cadre suit le format de l'image affichée (image entière ou vue du donjon seule).
 	float aspect = s.environment == kEnvPassthroughCrt ? 0.75f : clampf(s.screenAspect, 0.3f, 1.5f);
@@ -956,7 +972,7 @@ void Scene::prepare(const SceneState &s) {
 		pd.rect[0] = pn.u0; pd.rect[1] = pn.v0; pd.rect[2] = pn.u1; pd.rect[3] = pn.v1;
 		pd.border[0] = du; pd.border[1] = dv;
 		pd.alpha = pn.alpha;
-		pd.glow = pn.blank ? 1.0f : 0.0f; // pour un panneau : éteint
+		pd.glow = pn.blank ? 1.0f : (pn.hotOutline ? 2.0f : 0.0f); // pour un panneau : 1 éteint, 2 zone encadrée
 		for (int k = 0; k < 4; k++)
 			pd.hot[k] = pn.hot[k];
 		pd.texture = tex;

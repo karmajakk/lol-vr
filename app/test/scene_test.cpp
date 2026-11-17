@@ -252,6 +252,8 @@ int main(int argc, char **argv) {
 		{"split_right", kEnvLibrary, kThemeKeep, seat, -42, -12, 1.0f, false, 0, 0, 1},
 		{"split_pt", kEnvPassthroughFrame, kThemeKeep, seat, 0, -10, 1.25f, true, 0.0f, 0.0f, 1},
 		{"corner", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.25f, true, 0.0f, 0.0f, 3},
+		{"help", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.0f, false, 0.0f, 0.0f, 4},
+		{"table_moved", kEnvLibrary, kThemeKeep, {0.6f, 1.6f, 1.2f}, 35, -25, 1.0f, true, 0.0f, 0.0f, 5},
 		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
 
@@ -469,7 +471,7 @@ int main(int argc, char **argv) {
 			ui.update(in, o, tmp);
 			SceneState::Panel kb = tmp.panels[5];
 			auto keyPos = [&](float col, float row) {
-				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((1.0f - 2.0f * row * 40.0f / 284.0f) * kb.halfH);
+				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((1.0f - 2.0f * row * 40.0f / 324.0f) * kb.halfH);
 			};
 			auto press = [&](float col, float row) {
 				aimAt(keyPos(col, row));
@@ -491,6 +493,40 @@ int main(int argc, char **argv) {
 			check(k.action == kUiActionToggleFire, "clavier : bouton du feu");
 			k = press(6.0f, 0.5f);
 			check(k.action == kUiActionToggleTable, "clavier : bouton de la table");
+			k = press(5.0f, 6.5f);
+			check(k.action == kUiActionToggleHelp, "clavier : bouton de l'aide");
+			in.keyboardOpen = false;
+			// Panneau d'aide : visible, et un clic dessus le ferme
+			in.helpOpen = true;
+			ui.update(in, o, tmp);
+			SceneState::Panel help = tmp.panels[5];
+			check(help.visible && help.texture != 0, "aide : le panneau est affiché");
+			aimAt(help.center);
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.action == kUiActionCloseHelp && !o.buttonsToGame, "aide : un clic la ferme");
+			in.triggerDown = in.triggerPressed = false;
+			in.helpOpen = false;
+			// Table : on attrape sa barrette, on la tire vers la gauche, elle suit sur le plancher
+			in.tableHandle = true;
+			ui.update(in, o, tmp);
+			Vec3 th = tmp.handles[6].center;
+			aimAt(th);
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.grabbed && o.dragging && !o.screenDragging, "table : barrette prise");
+			in.triggerPressed = false;
+			aimAt(th + Vec3{-0.6f, 0, 0});
+			ui.update(in, o, tmp);
+			check(o.tableMoved && o.tableX < -0.4f && fabsf(o.tableZ - in.tableZ) < 0.15f && fabsf(o.tableScale - 1.0f) < 1e-3f, "table : elle suit le doigt vers la gauche");
+			in.stickX = 1.0f; in.dt = 0.5f;
+			ui.update(in, o, tmp);
+			check(o.tableMoved && o.tableScale > 1.3f, "table : joystick à droite, elle grandit");
+			in.stickX = 0; in.dt = 0.016f;
+			in.triggerDown = false;
+			ui.update(in, o, tmp);
+			check(o.released && o.layoutChanged, "table : lâchée, à mémoriser");
+			in.tableHandle = false;
 			in.keyboardOpen = false;
 		}
 		// 10. Image entière : pas de fenêtres, le coin de l'écran donne le coin de l'image
@@ -522,7 +558,7 @@ int main(int argc, char **argv) {
 			continue;
 		st.environment = sh.env;
 		st.theme = sh.theme;
-		const bool split = sh.mode == 1 || sh.mode == 3;
+		const bool split = sh.mode == 1 || sh.mode >= 3;
 		// Écran : image entière (4:3), ou vue du donjon seule à la même hauteur.
 		float fullW = 2.4f;
 		Vec3 screenPos = {0, 1.30f, -2.2f};
@@ -580,10 +616,21 @@ int main(int argc, char **argv) {
 				in.tip = st.hands[1].pos + rotate(st.hands[1].rot, gloveFingertip(false, 0.0f));
 			}
 			in.dir = rotate(st.hands[1].rot, {0, 0, -1});
+			if (sh.mode == 5) // le doigt vise la barrette de la table déplacée
+				in.dir = normalize(Vec3{-1.0f, 0.66f * 0.85f + 0.16f, 0.25f} - in.tip);
 			if (sh.mode == 3) // le doigt vise le coin haut droit du cadre de l'écran
 				in.dir = normalize(in.screenPos + Vec3{in.dispW * 0.595f, in.dispH * 0.5f + in.dispW * 0.095f, 0} - in.tip);
 		}
 		ui.setInfo("Images : fenetre OUI, portrait OUI, tableau1 non, tableau2 non", "Dossier decor : fenetre.png portrait.png");
+		in.helpOpen = sh.mode == 4;
+		in.tableHandle = sh.env == kEnvLibrary;
+		if (sh.mode == 5) {
+			in.tableX = -1.0f; in.tableZ = 0.25f; in.tableScale = 0.85f;
+		}
+		scene.setTable(true, in.tableX, in.tableZ, in.tableScale);
+		if (sh.mode == 1) {
+			in.partyMark[0] = 149; in.partyMark[1] = 143; in.partyMark[2] = 66; in.partyMark[3] = 34;
+		}
 		ui.resetLayout(in);
 		UiFrameOutput uo;
 		ui.update(in, uo, st);

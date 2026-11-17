@@ -13,7 +13,7 @@ const float kRoomFrontZ = -3.5f;
 const float kRoomBackZ = 2.7f;
 const float kRoomHeight = 3.3f;
 // Table de lecture devant le joueur (repère de la pièce)
-const float kTableZ = -0.62f, kTableHalfW = 0.80f, kTableHalfD = 0.28f, kTableTop = 0.66f;
+const float kTableZ = -0.62f, kTableHalfW = 0.80f, kTableHalfD = 0.28f, kTableTop = 0.66f; // taille 1, place d'origine
 
 enum LightKind { kLightWarm = 0, kLightWindow = 1, kLightFire = 2 };
 
@@ -51,13 +51,14 @@ struct RoomInfo {
 // Images fournies par le joueur (fenêtre, portrait au-dessus de la cheminée).
 struct RoomOptions {
 	bool table = true; // table de lecture et tabouret devant le joueur
+	float tableX = 0.0f, tableZ = -0.62f, tableScale = 1.0f; // où le joueur l'a posée, et sa taille
 	bool windowImage = false;
 	float windowAspect = 1.6f; // largeur / hauteur
 	bool portraitImage = false;
 	float portraitAspect = 1.5f;
-	// Deux autres tableaux au choix (mur de gauche, mur du fond)
-	bool paintingImage[2] = {false, false};
-	float paintingAspect[2] = {1.3f, 1.3f};
+	// Quatre autres tableaux au choix (deux au mur de gauche, deux au mur du fond)
+	bool paintingImage[4] = {false, false, false, false};
+	float paintingAspect[4] = {1.3f, 1.3f, 1.3f, 1.3f};
 };
 
 // Construit la pièce. `solid` reçoit la géométrie opaque, `alpha` les parties translucides (vitrail).

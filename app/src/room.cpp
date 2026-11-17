@@ -797,7 +797,13 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 
 	// --- Mur de gauche, partie arrière : bannière, carte encadrée, globe ---
 	mb.setTransform(place({-X + 0.012f, 2.02f, 0.70f}, 90.0f));
-	painting(mb, 0.84f, 0.63f, kTexPaintTheme);
+	if (opt.paintingImage[2]) {
+		float pw = 0.90f, ph = pw / opt.paintingAspect[2];
+		if (ph > 0.80f) { ph = 0.80f; pw = ph * opt.paintingAspect[2]; }
+		paintingImage(mb, pw, ph, kTexImgPainting3A);
+	} else {
+		painting(mb, 0.84f, 0.63f, kTexPaintTheme);
+	}
 	mb.setTransform(place({-X + 0.012f, 1.85f, 1.72f}, 90.0f));
 	if (opt.paintingImage[0]) {
 		float pw = 0.95f, ph = pw / opt.paintingAspect[0];
@@ -825,6 +831,13 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	} else {
 		painting(mb, 1.10f, 0.80f, kTexPaintCastle);
 	}
+	// Un cadre de plus à droite de la porte, seulement si le joueur fournit l'image
+	if (opt.paintingImage[3]) {
+		mb.setTransform(place({1.62f, 1.90f, ZB - 0.012f}, 180.0f));
+		float pw = 1.10f, ph = pw / opt.paintingAspect[3];
+		if (ph > 1.0f) { ph = 1.0f; pw = ph * opt.paintingAspect[3]; }
+		paintingImage(mb, pw, ph, kTexImgPainting4A);
+	}
 	for (float x : {-0.98f, 0.68f}) {
 		mb.setTransform(place({x, 2.05f, ZB}, 180.0f));
 		sconce(mb, info);
@@ -833,9 +846,12 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 
 	// --- Table de travail, tabouret, tapis, lustre ---
 	if (opt.table) {
-		mb.setTransform(place({0, 0, -0.62f}, 0.0f));
+		const float ts = opt.tableScale;
+		mb.setTransform(poseMatrix({opt.tableX, 0, opt.tableZ}, quatYaw(0.0f), ts));
 		table(mb, info, rng);
-		mb.setTransform(place({1.45f, 0, -0.25f}, 0.0f));
+		// Le tabouret reste au bout de la table, du côté du milieu de la pièce.
+		float side = opt.tableX > 0.3f ? -1.0f : 1.0f;
+		mb.setTransform(poseMatrix({opt.tableX + side * 1.45f * ts, 0, opt.tableZ + 0.37f * ts}, quatYaw(0.0f), ts));
 		stool(mb, info);
 		mb.resetTransform();
 	}
@@ -868,7 +884,7 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	Vec3 fire = {1.0f * th.fireTint[0], 0.46f * th.fireTint[1], 0.15f * th.fireTint[2]};
 	info.lights.push_back({{fx - 0.55f, 0.60f, -0.6f}, fire * 2.4f, 1.7f, 1.0f, kLightFire});
 	if (opt.table)
-		info.lights.push_back({{0.66f, kTableHeight + 0.30f, -0.72f}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
+		info.lights.push_back({{opt.tableX + 0.66f * opt.tableScale, (kTableHeight + 0.30f) * opt.tableScale, opt.tableZ - 0.10f * opt.tableScale}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
 	info.lights.push_back({{0, 2.45f, 0.75f}, warm * 0.85f, 1.8f, 0.10f, kLightWarm});
 	info.lights.push_back({{-X + 0.55f, 1.85f, wzc}, Vec3{th.windowLight[0], th.windowLight[1], th.windowLight[2]} * 2.6f, 1.9f, 0.0f, kLightWindow});
 	info.lights.push_back({{-1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});

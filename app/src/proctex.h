@@ -36,6 +36,10 @@ enum TexLayer {
 	kTexImgPainting1B,
 	kTexImgPainting2A,
 	kTexImgPainting2B,
+	kTexImgPainting3A,
+	kTexImgPainting3B,
+	kTexImgPainting4A,
+	kTexImgPainting4B,
 	kTexCount
 };
 

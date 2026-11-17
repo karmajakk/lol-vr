@@ -16,6 +16,7 @@ enum UiPanelId {
 	kPanelControls,  // flèches de déplacement, options, repos
 	kPanelCompass,   // colonne de droite : boussole, atlas, lampe, bourse
 	kPanelKeyboard,  // clavier et options
+	kPanelHelp,      // aide : les manettes et les boutons
 	kUiPanelCount
 };
 
@@ -29,7 +30,7 @@ struct UiPlacement {
 const float kSplitViewHeight = 0.54f;
 const float kSplitViewLift = 0.16f;
 
-enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionToggleTable, kUiActionResetLayout, kUiActionCloseKeyboard };
+enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionToggleTable, kUiActionResetLayout, kUiActionCloseKeyboard, kUiActionToggleHelp, kUiActionCloseHelp };
 
 const unsigned kUiModShift = 1;
 
@@ -59,6 +60,10 @@ struct UiFrameInput {
 	// État du jeu
 	bool split = false;       // l'interface détachée est affichée
 	bool keyboardOpen = false;
+	bool helpOpen = false;
+	// Table de la bibliothèque (repère de la pièce) : une barrette permet de la déplacer.
+	bool tableHandle = false;
+	float tableX = 0.0f, tableZ = -0.62f, tableScale = 1.0f;
 	// Zone à mettre en valeur dans la fenêtre du groupe (pixels de l'image du jeu ; largeur 0 = aucune) :
 	// le personnage choisi pour les boutons d'attaque et de magie.
 	float partyMark[4] = {0, 0, 0, 0};
@@ -86,6 +91,9 @@ struct UiFrameOutput {
 	float screenZoom = 1.0f;      // facteur à appliquer à sa taille
 	bool layoutChanged = false;   // à mémoriser
 	bool grabbed = false, released = false; // retours haptiques
+	// Table déplacée ou redimensionnée
+	bool tableMoved = false;
+	float tableX = 0.0f, tableZ = 0.0f, tableScale = 1.0f;
 	// Clavier
 	int keyCount = 0;
 	unsigned keys[4] = {0, 0, 0, 0}, keyMods[4] = {0, 0, 0, 0};
@@ -114,6 +122,7 @@ public:
 	void update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene);
 
 	UiPlacement placement[kUiPanelCount];
+	static UiPlacement defaultHelpPlacement(float yaw);
 	static const char *panelKey(int id);
 
 private:

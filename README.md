@@ -52,7 +52,7 @@ simplement le nouvel APK par-dessus l'ancien.
 | Viser + poignée | Clic droit |
 | Joystick gauche | Avancer, reculer, pas de côté |
 | Joystick droit (gauche/droite) | Tourner |
-| Joystick droit (haut/bas) | Dans le donjon : personnage suivant / précédent (son cadre s'éclaire dans la fenêtre du groupe) |
+| Joystick droit (haut/bas) | Dans le donjon : personnage suivant / précédent (il est encadré de jaune dans la fenêtre du groupe) |
 | A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
 | B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
 | Y | Carte |
@@ -69,6 +69,13 @@ quitte l'écran et les panneaux, le rayon du pointeur s'allonge pour montrer où
 Visez la barrette, serrez la gâchette et gardez-la serrée : l'objet suit votre doigt. Pendant que vous le tenez, le
 joystick droit le pousse ou le tire (haut/bas) et le rapetisse ou l'agrandit (gauche/droite).
 Relâchez la gâchette pour le poser. Tout est mémorisé d'une fois à l'autre.
+
+La **table** de la bibliothèque a aussi sa barrette, au-dessus du plateau : tenez-la et pointez
+le plancher pour la faire glisser ; le joystick droit (gauche/droite) change sa taille. Le bouton
+« Table » du clavier (X) la retire ou la remet.
+
+Un **panneau d'aide** résume les manettes : il s'affiche au premier lancement, et la touche
+« Aide » du clavier (X) le rouvre. Un clic dessus le ferme.
 
 Pour **agrandir ou réduire** l'écran ou une fenêtre, visez l'un de ses coins, juste à l'extérieur
 (sur le cadre, pour l'écran) : une équerre de laiton apparaît. Serrez la gâchette et écartez ou
@@ -106,7 +113,11 @@ du casque (PNG ou JPEG) :
 
 - `fenetre.png` : la vue par la fenêtre ;
 - `portrait.png` : le tableau au-dessus de la cheminée ;
-- `tableau1.png`, `tableau2.png` : deux autres tableaux (mur de gauche, mur du fond).
+- `tableau1.png`, `tableau3.png` : les deux tableaux du mur de gauche ;
+- `tableau2.png`, `tableau4.png` : les deux tableaux du mur du fond (le quatrième cadre n'apparaît
+  que si l'image est fournie).
+
+Six images au maximum.
 
 Le nom peut aussi contenir « chateau », « roi », etc. ; une image au nom quelconque prend la
 première place libre. L'application les prend en compte quelques secondes après leur copie, sans

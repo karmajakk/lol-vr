@@ -20,8 +20,12 @@ Le **nom** indique l'emplacement :
 |---|---|
 | `fenetre` (ou `chateau`, `castle`) | la vue par la fenêtre |
 | `portrait` (ou `roi`, `king`) | le tableau au-dessus de la cheminée |
-| `tableau1` | tableau du mur de gauche |
-| `tableau2` | tableau du mur du fond |
+| `tableau1` | mur de gauche, à la place de la carte |
+| `tableau2` | mur du fond, à gauche de la porte |
+| `tableau3` | mur de gauche, à la place du paysage |
+| `tableau4` | mur du fond, à droite de la porte (cadre ajouté seulement si l'image existe) |
+
+Six images au maximum.
 
 Une image au nom quelconque prend la première place libre. L'application les prend en compte quelques secondes après la copie, sans redémarrer.
 

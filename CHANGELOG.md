@@ -3,6 +3,16 @@
 Format : [versionnage sémantique](https://semver.org/lang/fr/). Tant que le numéro commence par 0,
 le projet est en développement et tout peut encore changer.
 
+## [0.9.0] — Aide, table déplaçable, six images
+
+- Panneau d'aide sur les manettes et les boutons : affiché au premier lancement, puis par la
+  touche « Aide » du clavier (X).
+- Le personnage choisi pour le combat est simplement encadré de jaune (plus de voile jaune).
+- La table se déplace (barrette au-dessus du plateau) et change de taille (joystick droit en la
+  tenant) ; sa place est mémorisée.
+- Six images personnelles au lieu de quatre : `tableau3` (mur de gauche) et `tableau4` (mur du
+  fond, à droite de la porte) s'ajoutent.
+
 ## [0.8.0] — Fiche de personnage dans l'écran, table au choix
 
 - La fiche d'un personnage s'affiche en entier dans l'écran (qui s'élargit vers la droite) ; les

@@ -358,6 +358,9 @@ struct Swapchain {
 
 enum Hand { kLeft = 0, kRight = 1 };
 
+// Images du joueur : fenêtre, portrait, quatre tableaux.
+const int kImageSlots = 6;
+
 struct Button {
 	bool down = false;
 };
@@ -475,10 +478,12 @@ struct App {
 	float viewShift = 0.0f; // la fiche d'un personnage, plus large, déborde d'autant vers la droite
 	bool charSheet = false; // la fiche d'un personnage est ouverte
 	bool tableOn = true;    // la table de lecture est dans la bibliothèque
+	float tableX = 0.0f, tableZ = -0.62f, tableScale = 1.0f; // sa place dans la pièce et sa taille
+	bool helpOpen = false, helpSeen = false; // panneau d'aide (affiché de lui-même la première fois)
 	int moveDir = 0;       // direction tenue au joystick gauche
 	double imagesCheckedAt = -100.0;
-	bool imageLoaded[4] = {false, false, false, false};
-	std::string imageFile[4];                    // fichier affiché dans chaque emplacement
+	bool imageLoaded[kImageSlots] = {false, false, false, false, false, false};
+	std::string imageFile[kImageSlots];                    // fichier affiché dans chaque emplacement
 	std::map<std::string, long> imageRejected;   // fichiers illisibles (chemin -> taille au moment de l'essai)
 	std::string imageInfo[2];                    // état lisible, affiché sous le clavier
 	// Direction de l'écran choisie par le joueur, par décor (lacet par rapport au regard de départ, tangage)
@@ -1051,8 +1056,18 @@ void loadSettings(App &app, int &environment) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.fireOn = iv != 0;
 		} else if (!strcmp(name, "table")) {
-			if (sscanf(rest, "%d", &iv) == 1)
+			float x = 0, z = 0, sc = 0;
+			int n = sscanf(rest, "%d %f %f %f", &iv, &x, &z, &sc);
+			if (n >= 1)
 				app.tableOn = iv != 0;
+			if (n == 4 && fabsf(x) <= 2.5f && z >= -3.0f && z <= 2.5f && sc >= 0.5f && sc <= 1.6f) {
+				app.tableX = x;
+				app.tableZ = z;
+				app.tableScale = sc;
+			}
+		} else if (!strcmp(name, "aide")) {
+			if (sscanf(rest, "%d", &iv) == 1)
+				app.helpSeen = iv != 0;
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
@@ -1079,7 +1094,10 @@ void loadSettings(App &app, int &environment) {
 	}
 	fclose(f);
 	// La disposition n'est reprise que si elle est complète (sinon : disposition d'origine).
-	app.layoutLoaded = loadedPanels == (1 << lolvr::kUiPanelCount) - 1;
+	const int needed = (1 << lolvr::kUiPanelCount) - 1 - (1 << lolvr::kPanelHelp);
+	if (!(loadedPanels & (1 << lolvr::kPanelHelp)))
+		app.ui.placement[lolvr::kPanelHelp] = lolvr::Ui::defaultHelpPlacement(0.0f);
+	app.layoutLoaded = (loadedPanels & needed) == needed;
 	if (app.layoutLoaded)
 		app.ui.setHasLayout(true);
 }
@@ -1094,7 +1112,8 @@ void saveSettings(App &app) {
 		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
 	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
 	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
-	fprintf(f, "table %d\n", app.tableOn ? 1 : 0);
+	fprintf(f, "table %d %.3f %.3f %.3f\n", app.tableOn ? 1 : 0, app.tableX, app.tableZ, app.tableScale);
+	fprintf(f, "aide %d\n", app.helpSeen ? 1 : 0);
 	for (int i = 0; i < kEnvCount; i++)
 		fprintf(f, "visee %d %.4f %.4f\n", app.aimSaved[i] ? 1 : 0, app.aimYaw[i], app.aimPitch[i]);
 	if (app.ui.hasLayout())
@@ -1443,11 +1462,13 @@ std::string plainName(const std::string &name) {
 }
 
 void scanDecorImages(App &app) {
-	static const char *const words[4][8] = {
+	static const char *const words[kImageSlots][8] = {
 		{"fen", "window", "chateau", "castle", "gladstone", "paysage", "vue", nullptr},
 		{"portrait", "roi", "king", "richard", nullptr},
 		{"tableau1", "tableau 1", "tableau_1", "tableau-1", nullptr},
 		{"tableau2", "tableau 2", "tableau_2", "tableau-2", nullptr},
+		{"tableau3", "tableau 3", "tableau_3", "tableau-3", nullptr},
+		{"tableau4", "tableau 4", "tableau_4", "tableau-4", nullptr},
 	};
 	static const char *const exts[] = {".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".gif", ".tga", ".webp", ".heic", ".avif"};
 	const std::string dirs[3] = {app.decorDir, app.gameRoot, app.decorDir + "/.."};
@@ -1470,7 +1491,7 @@ void scanDecorImages(App &app) {
 		return false;
 	};
 	auto inUse = [&](const std::string &path) {
-		for (int k = 0; k < 4; k++)
+		for (int k = 0; k < kImageSlots; k++)
 			if (app.imageLoaded[k] && app.imageFile[k] == path)
 				return true;
 		return false;
@@ -1504,7 +1525,7 @@ void scanDecorImages(App &app) {
 			if (di == 0)
 				seen.push_back(name);
 			int slot = -1;
-			for (int k = 0; k < 4 && slot < 0; k++)
+			for (int k = 0; k < kImageSlots && slot < 0; k++)
 				for (int w = 0; words[k][w]; w++)
 					if (lower.find(words[k][w]) != std::string::npos) {
 						slot = k;
@@ -1522,7 +1543,7 @@ void scanDecorImages(App &app) {
 		for (const std::string &path : unnamed) {
 			if (inUse(path))
 				continue;
-			for (int k = 0; k < 4; k++)
+			for (int k = 0; k < kImageSlots; k++)
 				if (!app.imageLoaded[k]) {
 					tryLoad(k, path);
 					break;
@@ -1535,10 +1556,15 @@ void scanDecorImages(App &app) {
 	}
 
 	// Ce que le joueur lit sous le clavier (bouton X).
-	static const char *const labels[4] = {"fenetre", "portrait", "tableau1", "tableau2"};
-	std::string l1 = "Images :";
-	for (int k = 0; k < 4; k++)
-		l1 += std::string(" ") + labels[k] + (app.imageLoaded[k] ? " OUI" : " non") + (k < 3 ? "," : "");
+	static const char *const labels[kImageSlots] = {"fenetre", "portrait", "tableau1", "tableau2", "tableau3", "tableau4"};
+	int shownCount = 0;
+	std::string shownNames;
+	for (int k = 0; k < kImageSlots; k++)
+		if (app.imageLoaded[k]) {
+			shownCount++;
+			shownNames += std::string(" ") + labels[k];
+		}
+	std::string l1 = "Images affichees (" + std::to_string(shownCount) + "/" + std::to_string(kImageSlots) + ") :" + (shownCount ? shownNames : std::string(" aucune"));
 	std::string l2;
 	if (!decorExists)
 		l2 = "Dossier decor introuvable.";
@@ -1619,8 +1645,16 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 		in.partyMark[3] = 34.0f;
 	}
 	app.ui.setOptions(app.fireOn, app.detached, app.tableOn);
-	app.scene.setTable(app.tableOn);
+	app.scene.setTable(app.tableOn, app.tableX, app.tableZ, app.tableScale);
 	in.table = app.tableOn;
+	in.tableHandle = app.tableOn && app.environment == lolvr::kEnvLibrary;
+	in.tableX = app.tableX; in.tableZ = app.tableZ; in.tableScale = app.tableScale;
+	if (!app.helpSeen && app.screenPlaced) {
+		app.helpSeen = true;
+		app.helpOpen = true;
+		app.settingsDirty = true;
+	}
+	in.helpOpen = app.helpOpen;
 	in.compassBlank = app.split && app.charSheet;
 	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
 	if (!app.ui.hasLayout() && app.screenPlaced)
@@ -1631,12 +1665,23 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0} - rotate(screenRot(app), {app.viewShift, 0, 0}), out.screenZoom);
 	if (out.screenResizing)
 		resizeScreen(app, out.screenZoom);
+	if (out.tableMoved) {
+		app.tableX = out.tableX;
+		app.tableZ = out.tableZ;
+		app.tableScale = out.tableScale;
+	}
 	for (int i = 0; i < out.keyCount; i++)
 		typeKey(app, out.keys[i], out.keyMods[i], now);
 	switch (out.action) {
 	case lolvr::kUiActionToggleFire:
 		app.fireOn = !app.fireOn;
 		app.settingsDirty = true;
+		break;
+	case lolvr::kUiActionToggleHelp:
+		app.helpOpen = !app.helpOpen;
+		break;
+	case lolvr::kUiActionCloseHelp:
+		app.helpOpen = false;
 		break;
 	case lolvr::kUiActionToggleTable:
 		app.tableOn = !app.tableOn;
