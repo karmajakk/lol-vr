@@ -2,7 +2,7 @@
 
 Trois décors, que l'on change d'un clic bref du joystick gauche :
 
-- **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux, bannières et reliques sur des socles ; le milieu de la pièce est libre. La vue par la fenêtre, la lumière, un tableau, les bannières et l'ambiance changent selon la zone du jeu.
+- **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux, bannières et reliques sur des socles ; on y est assis à une table de lecture, face à l'écran. La vue par la fenêtre, la lumière, un tableau, les bannières et l'ambiance changent selon la zone du jeu.
 - **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
 - **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90, posé sur un ordinateur 486.
 

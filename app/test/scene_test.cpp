@@ -365,6 +365,10 @@ int main(int argc, char **argv) {
 			ui.placement[kPanelParty] = {0.0f, -1.2f, 2.0f, 0.006f};
 			SceneState::Panel p = panel(0);
 			check(p.center.y - p.halfH > 0.0f, "fenêtre placée sous le plancher : remontée");
+			// Au-dessus de la table (0,62 m devant le joueur), mais trop bas
+			ui.placement[kPanelParty] = {0.0f, -1.05f, 1.0f, 0.0008f};
+			p = panel(0);
+			check(p.center.y - p.halfH >= kTableTop, "fenêtre placée dans la table : remontée au-dessus du plateau");
 			ui.placement[kPanelSpells] = {1.5f, 0.0f, 5.0f, 0.006f};
 			p = panel(2);
 			check(p.center.x > -kRoomHalfX + 0.3f, "fenêtre placée dans le mur : ramenée dans la pièce");

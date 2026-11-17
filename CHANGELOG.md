@@ -5,7 +5,6 @@ le projet est en développement et tout peut encore changer.
 
 ## [0.6.0] — Fenêtres indépendantes, coins pour agrandir
 
-- La table et le tabouret sont retirés de la bibliothèque : le milieu de la pièce est libre.
 - Chaque fenêtre (groupe, inventaire, sorts, commandes, boussole) est indépendante de l'écran :
   déplacer ou agrandir l'écran ne bouge plus les autres. La disposition repart de zéro une fois.
 - Agrandir ou réduire l'écran ou une fenêtre en tirant sur un coin (une équerre de laiton apparaît

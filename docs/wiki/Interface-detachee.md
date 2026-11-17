@@ -10,7 +10,7 @@ Pendant l'exploration, l'écran ne montre que la **vue du donjon**. Le reste de 
 
 Au départ, elles sont rangées autour de l'écran : le pointeur passe de l'une à l'autre sans décalage, ce qui permet de ramasser un objet au sol et de le déposer dans l'inventaire. Si vous visez juste à côté d'une fenêtre, le pointeur s'accroche à la plus proche.
 
-Chaque fenêtre est **indépendante** : déplacer ou agrandir l'écran ne bouge pas les autres, et chacune se déplace (barrette de laiton) et se redimensionne (coins) séparément. Dans la bibliothèque, elles ne traversent ni le plancher, ni les murs (mais elles peuvent encore traverser les étagères et les autres objets).
+Chaque fenêtre est **indépendante** : déplacer ou agrandir l'écran ne bouge pas les autres, et chacune se déplace (barrette de laiton) et se redimensionne (coins) séparément. Dans la bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table (mais elles peuvent encore traverser les étagères et les autres objets).
 
 Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image entière revient d'elle-même.
 

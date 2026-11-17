@@ -81,7 +81,7 @@ l'inventaire, le parchemin des sorts, les commandes (flèches, options, repos) e
 Au départ, elles sont rangées autour de l'écran : le pointeur passe de l'une à l'autre sans
 décalage, ce qui permet de ramasser un objet au sol et de le déposer dans l'inventaire.
 Chaque fenêtre est indépendante : déplacer ou agrandir l'écran ne bouge pas les autres. Dans la
-bibliothèque, elles ne traversent ni le plancher, ni les murs.
+bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table.
 Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image
 entière revient d'elle-même.
 
@@ -91,7 +91,7 @@ range les panneaux autour de l'écran, là où il se trouve.
 ## Les décors
 
 - **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux et
-  bannières ; le milieu de la pièce est libre. La vue par la fenêtre, la
+  bannières ; on y est assis à une table de lecture, face à l'écran. La vue par la fenêtre, la
   lumière, un tableau, les bannières et l'ambiance sonore changent selon la zone du jeu.
 - **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
 - **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90 posé

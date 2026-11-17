@@ -285,7 +285,7 @@ void Ui::resetLayout(const UiFrameInput &in) {
 
 namespace {
 
-// Garde un panneau dans la bibliothèque : au-dessus du plancher, devant les murs.
+// Garde un panneau dans la bibliothèque : au-dessus du plancher et de la table, devant les murs.
 Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	Quat q = quatYaw(in.roomYaw);
 	Vec3 p = rotate(conjugate(q), c - in.roomPos);
@@ -293,6 +293,8 @@ Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	p.x = clampf(p.x, -mx, mx);
 	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
 	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
+	if (fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
+		lo = kTableTop + hh + 0.03f;
 	if (hi < lo)
 		hi = lo;
 	p.y = clampf(p.y, lo, hi);
