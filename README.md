@@ -122,7 +122,9 @@ Le seul son d'ambiance est le feu de cheminée, coupé au départ (clavier, bout
   au moteur de Lands of Lore). Le second correctif fait connaître à l'application la zone du jeu
   et les événements (coups, sons) pour le décor et les vibrations.
 - `scripts/build.sh` : construit l'APK. GitHub le lance automatiquement à chaque modification
-  (`.github/workflows/build.yml`) et publie le résultat dans les Releases.
+  (`.github/workflows/build.yml`) ; une nouvelle version est publiée dans les Releases quand le
+  fichier `VERSION` change (notes tirées de `CHANGELOG.md`).
+- `docs/wiki/` : les pages du wiki du projet.
 - `keystore/debug.keystore` : clé de signature de test, publique, qui sert seulement à pouvoir
   installer les mises à jour par-dessus l'ancienne version. Elle ne protège rien.
 
