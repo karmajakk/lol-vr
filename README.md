@@ -9,7 +9,7 @@ The app speaks English by default; French is available from the gear on your lef
 
 ## Project status
 
-Version details: [CHANGELOG.md](CHANGELOG.md). Documentation: [project wiki](https://github.com/karmajakk/lol-vr/wiki).
+Version details: [CHANGELOG.md](CHANGELOG.md). Documentation: [docs/wiki](docs/wiki/Home.md).
 
 | Version | Content | Status |
 |---|---|---|

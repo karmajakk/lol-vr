@@ -7,16 +7,16 @@ The original game runs on [ScummVM](https://www.scummvm.org); the app adds a VR 
 
 ## Getting started
 
-- [[Installation]]: install the app and copy the game files
-- [[Controls]]: controllers, wrist menu, moving the screen and windows
-- [[Detached interface|Detached-interface]]: inventory, spells and portraits in free windows
-- [[Scenery and pictures|Scenery-and-pictures]]: library, mixed reality, your own pictures
-- [[Troubleshooting]]: common problems
+- [Installation](Installation.md): install the app and copy the game files
+- [Controls](Controls.md): controllers, wrist menu, moving the screen and windows
+- [Detached interface](Detached-interface.md): inventory, spells and portraits in free windows
+- [Scenery and pictures](Scenery-and-pictures.md): library, mixed reality, your own pictures
+- [Troubleshooting](Troubleshooting.md): common problems
 
 ## Behind the scenes
 
-- [[Development]]: how it's built and how to publish a version
-- [[Roadmap]]: what's being considered
+- [Development](Development.md): how it's built and how to publish a version
+- [Roadmap](Roadmap.md): what's being considered
 - [Changelog](https://github.com/karmajakk/lol-vr/blob/main/CHANGELOG.md)
 - [Latest version](https://github.com/karmajakk/lol-vr/releases/latest)
 

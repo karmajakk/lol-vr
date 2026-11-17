@@ -16,4 +16,4 @@ During cutscenes, menus, the map and full-width scenes, the whole image comes ba
 
 A **character sheet** is shown in full on the screen, which widens to the right while it's open. The windows stay where they are; the compass window goes dark, because the sheet uses that part of the image.
 
-The **Panels** button of the keyboard (X) shows the whole image all the time; **Reset layout** arranges the windows around the screen, wherever it is. To move or resize a window, see [[Controls]].
+The **Panels** button of the keyboard (X) shows the whole image all the time; **Reset layout** arranges the windows around the screen, wherever it is. To move or resize a window, see [Controls](Controls.md).
