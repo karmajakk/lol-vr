@@ -387,11 +387,23 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		q.u = cross(n, q.r);
 		Quad &hq = handle[i];
 		float border = clampf(0.012f * dist, 0.004f, 0.012f);
-		hq.hh = clampf(0.017f * dist, 0.008f, 0.06f);
-		hq.hw = fminf(q.hw, clampf(0.10f * dist, 0.03f, 0.35f));
+		float thick = clampf(0.017f * dist, 0.008f, 0.06f), longSide = clampf(0.10f * dist, 0.03f, 0.35f);
 		hq.r = q.r;
 		hq.u = q.u;
-		hq.c = q.c + q.u * (q.hh + border + hq.hh + 0.002f);
+		if (i == kPanelKeyboard) {
+			// Clavier : barrette au-dessus.
+			hq.hh = thick;
+			hq.hw = fminf(q.hw, longSide);
+			hq.c = q.c + q.u * (q.hh + border + hq.hh + 0.002f);
+		} else {
+			// Fenêtres du jeu : barrette sur le côté, pour ne jamais se trouver sur le chemin du
+			// pointeur entre l'écran et une fenêtre placée dessous. À droite pour la boussole, à gauche
+			// pour les autres.
+			float side = i == kPanelCompass ? 1.0f : -1.0f;
+			hq.hw = thick;
+			hq.hh = fminf(q.hh, longSide);
+			hq.c = q.c + q.r * (side * (q.hw + border + hq.hw + 0.002f));
+		}
 	}
 	// Poignée de l'écran : au-dessus du cadre (ou du moniteur)
 	{
@@ -457,7 +469,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				continue;
 			float t, x, y;
 			// Zone de prise un peu plus généreuse que la poignée dessinée
-			if (rayQuad(in.tip, in.dir, handle[i], t, x, y) && t < bestT && fabsf(x) <= 1.15f && fabsf(y) <= 1.35f) {
+			bool upright = handle[i].hh > handle[i].hw;
+			if (rayQuad(in.tip, in.dir, handle[i], t, x, y) && t < bestT && fabsf(x) <= (upright ? 1.35f : 1.15f) && fabsf(y) <= (upright ? 1.15f : 1.35f)) {
 				bestT = t; hitKind = kHitHandle; hitIndex = i; hx = x; hy = y;
 			}
 		}

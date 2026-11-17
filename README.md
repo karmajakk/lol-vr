@@ -63,7 +63,7 @@ simplement le nouvel APK par-dessus l'ancien.
 
 ### Déplacer l'écran et les panneaux
 
-L'écran et chaque panneau portent une **barrette de laiton** au-dessus d'eux. Dès que le doigt
+L'écran et le clavier portent une **barrette de laiton** au-dessus d'eux ; les fenêtres du jeu la portent sur le côté, pour ne pas gêner le pointeur entre l'écran et les fenêtres. Dès que le doigt
 quitte l'écran et les panneaux, le rayon du pointeur s'allonge pour montrer où l'on vise.
 Visez la barrette, serrez la gâchette et gardez-la serrée : l'objet suit votre doigt. Pendant que vous le tenez, le
 joystick droit le pousse ou le tire (haut/bas) et le rapetisse ou l'agrandit (gauche/droite).

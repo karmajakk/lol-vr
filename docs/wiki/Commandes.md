@@ -17,7 +17,7 @@
 
 ## Déplacer l'écran et les panneaux
 
-L'écran et chaque panneau portent une **barrette de laiton** au-dessus d'eux.
+L'écran et le clavier portent une **barrette de laiton** au-dessus d'eux ; les fenêtres du jeu la portent sur le côté, pour ne pas gêner le pointeur entre l'écran et les fenêtres.
 
 1. Visez la barrette (le rayon jaune s'allonge dès que vous quittez l'écran et les panneaux).
 2. Serrez la gâchette et gardez-la serrée : l'objet suit votre main.

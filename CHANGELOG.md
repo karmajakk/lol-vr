@@ -9,6 +9,8 @@ le projet est en développement et tout peut encore changer.
   déplacer ou agrandir l'écran ne bouge plus les autres. La disposition repart de zéro une fois.
 - Agrandir ou réduire l'écran ou une fenêtre en tirant sur un coin (une équerre de laiton apparaît
   quand on vise le coin, juste à l'extérieur).
+- Les barrettes de déplacement des fenêtres du jeu sont sur le côté (et non plus au-dessus) : le
+  pointeur passe de l'écran au groupe et à l'inventaire sans rencontrer de barrette.
 - L'endroit où l'on a posé l'écran est mémorisé d'une fois à l'autre.
 - Images personnelles : noms plus souples (« chateau », « roi »…, ou n'importe quel nom), et deux
   lignes sous le clavier (bouton X) qui disent quelles images sont affichées et quels fichiers

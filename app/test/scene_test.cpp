@@ -324,6 +324,19 @@ int main(int argc, char **argv) {
 			aimAt({0.3f, y1 + 0.02f, in.basePos.z});
 			ui.update(in, o, tmp);
 			check(valid == total, "entre l'écran et le groupe : toujours un retour visuel");
+			// Aucune barrette sur le chemin : de l'écran à l'inventaire, à la verticale, on ne survole
+			// que l'écran, son cadre et les fenêtres.
+			SceneState::Panel inv = panel(1);
+			bool clear = true;
+			for (float y = y0; y >= inv.center.y - inv.halfH; y -= 0.01f) {
+				aimAt({0.3f, y, in.basePos.z});
+				in.triggerPressed = in.triggerDown = true;
+				ui.update(in, o, tmp);
+				clear = clear && !o.grabbed;
+				in.triggerPressed = in.triggerDown = false;
+				ui.update(in, o, tmp);
+			}
+			check(clear, "de l'écran à l'inventaire : aucune barrette sur le chemin");
 		}
 		// 5. Juste à côté d'une fenêtre : le pointeur s'y accroche
 		{
@@ -391,7 +404,7 @@ int main(int argc, char **argv) {
 		// 7c. Coins : on attrape un coin, on l'écarte, la fenêtre grandit ; pareil pour l'écran
 		{
 			SceneState::Panel inv = panel(1);
-			Vec3 corner = inv.center + inv.right * (inv.halfW + 0.02f) + inv.up * (inv.halfH + 0.02f);
+			Vec3 corner = inv.center + inv.right * (inv.halfW + 0.02f) + inv.up * (inv.halfH + 0.02f); // coin sans barrette
 			float scale0 = ui.placement[kPanelInventory].scale;
 			aimAt(corner);
 			ui.update(in, o, tmp);
