@@ -1,0 +1,54 @@
+name: Renommer les anciennes versions (ponctuel)
+
+on:
+  push:
+    branches: [migration-versions]
+
+permissions:
+  contents: write
+
+jobs:
+  migrer:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Récupérer le code
+        run: |
+          git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" .
+          git checkout --quiet "${GITHUB_SHA}"
+
+      - name: Recréer les versions 0.1 à 0.4 sous leur nouveau nom
+        run: |
+          set -e
+          declare -A SHA=(
+            [1]=231dec64778c53fedae1d1f9c9bd97361ffa38a8
+            [2]=5dbd609e327414ccf9d252a87b6de159ae3c4abd
+            [3]=8443863aaaec467b87c60e1dd8ac1039db702af4
+            [4]=85aa820cb623a015c381a75e5b825da68dc7822b
+          )
+          declare -A NOTE=(
+            [1]="Version historique (ancien nom : apk-etape-1)."
+            [2]="Version historique (ancien nom : apk-etape-2)."
+            [3]="Version historique (ancien nom : apk-etape-3), abandonnée : préférez la dernière version."
+            [4]="Version historique (ancien nom : apk-etape-4) : préférez la dernière version."
+          )
+          for n in 1 2 3 4; do
+            V="0.${n}.0"
+            if gh release view "v${V}" > /dev/null 2>&1; then echo "v${V} existe déjà"; continue; fi
+            mkdir -p "dl${n}"
+            gh release download "apk-etape-${n}" --pattern lol-vr.apk --dir "dl${n}"
+            awk -v v="[$V]" '/^## / { if (f) exit; if (index($0, v)) { f = 1; next } } f { print }' CHANGELOG.md > "notes${n}.md"
+            printf '\n%s\n' "${NOTE[$n]}" >> "notes${n}.md"
+            gh release create "v${V}" "dl${n}/lol-vr.apk" --target "${SHA[$n]}" \
+              --title "Lands of Lore VR ${V}" --notes-file "notes${n}.md" --prerelease --latest=false
+            gh release delete "apk-etape-${n}" --yes --cleanup-tag
+          done
+
+      - name: Retirer l'ancienne publication de l'étape 5
+        run: |
+          if gh release view v0.5.0 > /dev/null 2>&1; then
+            gh release delete apk-etape-5 --yes --cleanup-tag || true
+          else
+            echo "v0.5.0 n'existe pas encore : l'étape 5 est conservée."
+          fi
