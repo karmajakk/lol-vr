@@ -3,6 +3,12 @@
 Format : [versionnage sémantique](https://semver.org/lang/fr/). Tant que le numéro commence par 0,
 le projet est en développement et tout peut encore changer.
 
+## [0.7.1] — Fiche de personnage et menu ScummVM en image entière
+
+- Quand on ouvre la fiche d'un personnage, l'image entière revient à l'écran (la fiche n'est plus
+  coupée entre l'écran et la fenêtre de la boussole) ; les fenêtres reviennent à la sortie.
+- Même chose pour le menu ScummVM (bouton menu de la manette gauche).
+
 ## [0.7.0] — Combat aux boutons
 
 - Dans le donjon, le bouton A fait attaquer le personnage choisi et le bouton B ouvre sa magie ;

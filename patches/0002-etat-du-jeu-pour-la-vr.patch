@@ -1,5 +1,5 @@
 diff --git a/engines/kyra/engine/lol.cpp b/engines/kyra/engine/lol.cpp
-index 9094a563..fc84c8fe 100644
+index 9094a563..c4f86a30 100644
 --- a/engines/kyra/engine/lol.cpp
 +++ b/engines/kyra/engine/lol.cpp
 @@ -39,6 +39,14 @@
@@ -17,19 +17,31 @@ index 9094a563..fc84c8fe 100644
  namespace Kyra {
  
  const char *const LoLEngine::kMouseKeymapName = "lolmouse";
-@@ -951,6 +959,11 @@ void LoLEngine::runLoop() {
+@@ -527,6 +535,11 @@ Common::KeymapArray LoLEngine::initKeymaps() {
+ void LoLEngine::pauseEngineIntern(bool pause) {
+ 	KyraEngine_v1::pauseEngineIntern(pause);
+ 	pauseDemoPlayer(pause);
++	// lol-vr: the ScummVM menu (or another pause) covers the whole screen
++	if (pause)
++		g_lolvrState.reserved[2] |= 4;
++	else
++		g_lolvrState.reserved[2] &= ~4;
+ }
+ 
+ Common::Error LoLEngine::go() {
+@@ -951,6 +964,11 @@ void LoLEngine::runLoop() {
  			_nextScriptFunc = 0;
  		}
  
 +		// lol-vr: the dungeon loop is running (reserved[0] ticks, reserved[1] = control mode)
 +		g_lolvrState.reserved[0]++;
-+		g_lolvrState.reserved[1] = _currentControlMode;
++		g_lolvrState.reserved[1] = _currentControlMode | (_weaponsDisabled ? 0x100 : 0); // 0x100: character sheet
 +		g_lolvrState.reserved[3] = countActiveCharacters(); // lol-vr: where the portraits (and their buttons) are
 +
  		_timer->update();
  
  		checkFloatingPointerRegions();
-@@ -3510,6 +3523,11 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
+@@ -3510,6 +3528,11 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
  			return 0;
  
  		if (damage > 0) {
@@ -41,7 +53,7 @@ index 9094a563..fc84c8fe 100644
  			m->hitPoints -= damage;
  			m->damageReceived = 0x8000 | damage;
  			m->flags |= 0x10;
-@@ -3565,6 +3583,12 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
+@@ -3565,6 +3588,12 @@ int LoLEngine::inflictDamage(uint16 target, int damage, uint16 attacker, int ski
  
  		setCharacterMagicOrHitPoints(target, 0, -damage, 1);
  
@@ -54,7 +66,7 @@ index 9094a563..fc84c8fe 100644
  		if (c->hitPointsCur <= 0) {
  			characterHitpointsZero(target, flags);
  		} else {
-@@ -4101,6 +4125,7 @@ uint16 LoLEngine::getNearestPartyMemberFromPos(int x, int y) {
+@@ -4101,6 +4130,7 @@ uint16 LoLEngine::getNearestPartyMemberFromPos(int x, int y) {
  // magic atlas
  
  void LoLEngine::displayAutomap() {
@@ -62,7 +74,7 @@ index 9094a563..fc84c8fe 100644
  	snd_playSoundEffect(105, -1);
  	gui_toggleButtonDisplayMode(_flags.isTalkie ? 78 : 76, 1);
  
-@@ -4193,6 +4218,7 @@ void LoLEngine::displayAutomap() {
+@@ -4193,6 +4223,7 @@ void LoLEngine::displayAutomap() {
  	addLevelItems();
  	gui_notifyButtonListChanged();
  	enableSysTimer(2);
