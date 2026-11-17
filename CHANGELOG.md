@@ -3,6 +3,12 @@
 Format : [versionnage sémantique](https://semver.org/lang/fr/). Tant que le numéro commence par 0,
 le projet est en développement et tout peut encore changer.
 
+## [0.7.0] — Combat aux boutons
+
+- Dans le donjon, le bouton A fait attaquer le personnage choisi et le bouton B ouvre sa magie ;
+  un coup de joystick droit vers le haut ou le bas change de personnage (son cadre s'éclaire dans
+  la fenêtre du groupe). Ailleurs, A et B restent Entrée et Échap.
+
 ## [0.6.0] — Fenêtres indépendantes, coins pour agrandir
 
 - Chaque fenêtre (groupe, inventaire, sorts, commandes, boussole) est indépendante de l'écran :

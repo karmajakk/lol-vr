@@ -6,8 +6,9 @@
 | Viser + poignée | Clic droit |
 | Joystick gauche | Avancer, reculer, pas de côté (une seule direction à la fois) |
 | Joystick droit (gauche/droite) | Tourner |
-| A | Entrée |
-| B | Échap (passer une cinématique) |
+| Joystick droit (haut/bas) | Dans le donjon : personnage suivant / précédent |
+| A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
+| B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
 | Y | Carte |
 | **X** | **Clavier et options** : taper un nom de sauvegarde, son du feu, panneaux, tout ranger |
 | Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |
@@ -29,6 +30,10 @@ Les positions sont mémorisées d'une fois à l'autre.
 ## Agrandir ou réduire
 
 Visez un coin de l'écran ou d'une fenêtre, juste à l'extérieur (sur le cadre, pour l'écran) : une équerre de laiton apparaît. Serrez la gâchette, puis écartez la main pour agrandir ou rapprochez-la pour réduire. La fenêtre change de taille autour de son centre.
+
+## Combat aux boutons
+
+Dans le donjon, un personnage est « choisi » : son cadre s'éclaire dans la fenêtre du groupe. **A** le fait attaquer, **B** ouvre sa liste de sorts (on choisit ensuite le sort en le visant). Un coup de joystick droit vers le haut ou le bas passe au personnage suivant ou précédent. Dans les menus, les cinématiques, la carte et la fiche d'un personnage, A et B redeviennent Entrée et Échap ; la touche Échap reste aussi disponible sur le clavier (X).
 
 ## Clavier (bouton X)
 

@@ -40,6 +40,7 @@ struct GameState {
 	uint32_t loopSerial = 0;  // augmente à chaque tour de la boucle du donjon (vue de jeu active)
 	int controlMode = 0;      // 0 = vue normale ; autre = scène spéciale sur toute la largeur
 	bool automapOpen = false; // la carte (atlas) occupe tout l'écran
+	int characters = 0;       // nombre de personnages du groupe (0 = inconnu)
 	bool menuOpen = false;    // un menu du jeu est affiché
 };
 

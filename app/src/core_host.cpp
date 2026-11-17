@@ -490,6 +490,7 @@ bool CoreHost::gameState(GameState &out) const {
 	out.hitDamage = s->hitDamage;
 	out.loopSerial = (uint32_t)s->reserved[0];
 	out.controlMode = s->reserved[1];
+	out.characters = s->reserved[3];
 	out.automapOpen = (s->reserved[2] & 1) != 0;
 	out.menuOpen = (s->reserved[2] & 2) != 0;
 	memcpy(out.tileset, s->tileset, sizeof(out.tileset));

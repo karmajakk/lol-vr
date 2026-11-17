@@ -52,8 +52,9 @@ simplement le nouvel APK par-dessus l'ancien.
 | Viser + poignée | Clic droit |
 | Joystick gauche | Avancer, reculer, pas de côté |
 | Joystick droit (gauche/droite) | Tourner |
-| A | Entrée |
-| B | Échap (passer une cinématique) |
+| Joystick droit (haut/bas) | Dans le donjon : personnage suivant / précédent (son cadre s'éclaire dans la fenêtre du groupe) |
+| A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
+| B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
 | Y | Carte |
 | **X** | **Clavier et options** : taper un nom de sauvegarde, couper ou remettre le son du feu, détacher ou non l'interface, tout ranger |
 | Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |

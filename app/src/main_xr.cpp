@@ -461,6 +461,12 @@ struct App {
 	bool splitWanted = false;
 	double splitWantedSince = 0;
 	bool gameStarted = false, automapOpen = false;
+	// Combat aux boutons : dans le donjon, A attaque et B ouvre la magie du personnage choisi.
+	bool inDungeon = false;
+	int characters = 0, selectedChar = 0;
+	bool attackDown = false, magicDown = false, charFlick = false;
+	double synthClickUntil = 0;   // clic envoyé au jeu à la place du pointeur (bouton de magie)
+	float synthU = 0, synthV = 0;
 	bool keyboardOpen = false, keyboardButtonDown = false;
 	bool fireOn = false;
 	bool layoutLoaded = false;
@@ -1285,6 +1291,10 @@ void updateGameEvents(App &app, double now) {
 		app.automapSince = now;
 	app.automapOpen = gs.automapOpen;
 	bool wanted = app.gameStarted && gs.controlMode == 0 && !gs.automapOpen && !gs.menuOpen;
+	app.inDungeon = wanted;
+	app.characters = gs.characters >= 1 && gs.characters <= 4 ? gs.characters : 0;
+	if (app.selectedChar >= app.characters)
+		app.selectedChar = 0;
 	if (wanted != app.splitWanted) {
 		app.splitWanted = wanted;
 		app.splitWantedSince = now;
@@ -1554,6 +1564,12 @@ void releaseTypedKeys(App &app, double now, bool all) {
 }
 
 // Interface : pointeur, panneaux, poignées, clavier. pointer = faux quand l'application n'a pas la main.
+// Bord gauche du cadre d'un personnage dans l'image du jeu (même calcul que le jeu).
+int portraitX(int count, int index) {
+	int t = (235 - count * 66) / (count + 1);
+	return index * 66 + t * (index + 1) + 83;
+}
+
 void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed, XrVector2f rightStick, lolvr::UiFrameOutput &out) {
 	lolvr::UiFrameInput in;
 	in.dt = dt;
@@ -1583,6 +1599,12 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	in.crt = app.environment == lolvr::kEnvPassthroughCrt;
 	in.split = app.split;
 	in.keyboardOpen = app.keyboardOpen;
+	if (app.inDungeon && app.characters > 0) {
+		in.partyMark[0] = (float)portraitX(app.characters, app.selectedChar);
+		in.partyMark[1] = 143.0f;
+		in.partyMark[2] = 66.0f;
+		in.partyMark[3] = 34.0f;
+	}
 	app.ui.setOptions(app.fireOn, app.detached);
 	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
 	if (!app.ui.hasLayout() && app.screenPlaced)
@@ -1682,10 +1704,16 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	XrVector2f right = getStick(app, kRight);
 	lolvr::UiFrameOutput ui;
 	updateUi(app, dt, now, true, clicked[hand] && app.triggerDown[hand], right, ui);
-	if (ui.pointerValid)
-		CoreHost::get().setPointer(ui.gu, ui.gv);
 	bool toGame = ui.buttonsToGame && !ui.dragging;
-	CoreHost::get().setMouseButtons(app.triggerDown[hand] && toGame, app.squeezeDown[hand] && toGame);
+	if (now < app.synthClickUntil) {
+		// Bouton de magie : un clic bref sur le bouton du personnage, à la place du pointeur.
+		CoreHost::get().setPointer(app.synthU, app.synthV);
+		CoreHost::get().setMouseButtons(app.synthClickUntil - now > 0.06, false);
+	} else {
+		if (ui.pointerValid)
+			CoreHost::get().setPointer(ui.gu, ui.gv);
+		CoreHost::get().setMouseButtons(app.triggerDown[hand] && toGame, app.squeezeDown[hand] && toGame);
+	}
 	if (clicked[hand] && toGame) {
 		app.clickPulse = 1.0f;
 		pulse(app, hand, 0.28f, 0.018f);
@@ -1746,8 +1774,35 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	app.zoomDown = zoomMode;
 
 	// Boutons
-	setKey(app.kEnter, getBool(app, app.aAction, -1), RETROK_RETURN);
-	setKey(app.kEsc, getBool(app, app.bAction, -1), RETROK_ESCAPE);
+	// A et B : dans le donjon, attaque et magie du personnage choisi (joystick droit haut/bas pour
+	// en changer) ; partout ailleurs (menus, cinématiques, carte, fiche), Entrée et Échap.
+	bool aDown = getBool(app, app.aAction, -1), bDown = getBool(app, app.bAction, -1);
+	bool combat = app.inDungeon && app.characters > 0;
+	if (combat) {
+		if (aDown && !app.attackDown) {
+			typeKey(app, (unsigned)RETROK_F1 + (unsigned)app.selectedChar, 0, now);
+			pulse(app, kRight, 0.35f, 0.03f);
+		}
+		if (bDown && !app.magicDown) {
+			app.synthU = ((float)portraitX(app.characters, app.selectedChar) + 44.0f + 11.0f) / 320.0f;
+			app.synthV = (160.0f + 8.5f) / 200.0f;
+			app.synthClickUntil = now + 0.16;
+			pulse(app, kRight, 0.25f, 0.03f);
+		}
+		bool flick = !stickBusy && fabsf(right.y) > 0.75f && fabsf(right.x) < 0.40f;
+		if (flick && !app.charFlick) {
+			int step = right.y > 0 ? 1 : app.characters - 1;
+			app.selectedChar = (app.selectedChar + step) % app.characters;
+			pulse(app, kRight, 0.30f, 0.02f);
+		}
+		app.charFlick = flick || (app.charFlick && fabsf(right.y) > 0.45f);
+	} else {
+		app.charFlick = false;
+	}
+	app.attackDown = aDown;
+	app.magicDown = bDown;
+	setKey(app.kEnter, aDown && !combat, RETROK_RETURN);
+	setKey(app.kEsc, bDown && !combat, RETROK_ESCAPE);
 	setKey(app.kMap, getBool(app, app.yAction, -1), RETROK_m);
 	// X = clavier et options (pour nommer une sauvegarde, entre autres), bouton menu = menu ScummVM.
 	bool keyboardButton = getBool(app, app.xAction, -1);

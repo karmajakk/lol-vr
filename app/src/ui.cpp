@@ -686,6 +686,12 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				p.u1 = (src.x + src.w) / 320.0f;
 				p.v0 = src.y / 200.0f;
 				p.v1 = (src.y + src.h) / 200.0f;
+				if (i == kPanelParty && in.partyMark[2] > 0.0f) {
+					p.hot[0] = in.partyMark[0] / 320.0f;
+					p.hot[1] = in.partyMark[1] / 200.0f;
+					p.hot[2] = (in.partyMark[0] + in.partyMark[2]) / 320.0f;
+					p.hot[3] = (in.partyMark[1] + in.partyMark[3]) / 200.0f;
+				}
 			}
 		}
 	}

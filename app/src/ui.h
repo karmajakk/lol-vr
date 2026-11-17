@@ -59,6 +59,9 @@ struct UiFrameInput {
 	// État du jeu
 	bool split = false;       // l'interface détachée est affichée
 	bool keyboardOpen = false;
+	// Zone à mettre en valeur dans la fenêtre du groupe (pixels de l'image du jeu ; largeur 0 = aucune) :
+	// le personnage choisi pour les boutons d'attaque et de magie.
+	float partyMark[4] = {0, 0, 0, 0};
 };
 
 struct UiFrameOutput {
