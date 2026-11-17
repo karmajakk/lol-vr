@@ -29,7 +29,7 @@ struct UiPlacement {
 const float kSplitViewHeight = 0.54f;
 const float kSplitViewLift = 0.16f;
 
-enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionResetLayout, kUiActionCloseKeyboard };
+enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionToggleTable, kUiActionResetLayout, kUiActionCloseKeyboard };
 
 const unsigned kUiModShift = 1;
 
@@ -62,6 +62,10 @@ struct UiFrameInput {
 	// Zone à mettre en valeur dans la fenêtre du groupe (pixels de l'image du jeu ; largeur 0 = aucune) :
 	// le personnage choisi pour les boutons d'attaque et de magie.
 	float partyMark[4] = {0, 0, 0, 0};
+	// La fiche d'un personnage occupe l'écran : la fenêtre de la boussole est éteinte.
+	bool compassBlank = false;
+	// La table de lecture est dans la pièce (les fenêtres ne la traversent pas).
+	bool table = true;
 };
 
 struct UiFrameOutput {
@@ -97,7 +101,7 @@ public:
 	// À appeler une fois, contexte OpenGL actif.
 	void initGl(bool srgb);
 	// Étiquettes des boutons d'options.
-	void setOptions(bool fireOn, bool detached);
+	void setOptions(bool fireOn, bool detached, bool table);
 	// Deux lignes d'information affichées sous le clavier (Latin-1).
 	void setInfo(const std::string &line1, const std::string &line2);
 	// Disposition par défaut : autour de l'écran tel qu'il est placé à cet instant.

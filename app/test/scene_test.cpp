@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
 	scene.init(true);
 	Ui ui;
 	ui.initGl(true);
-	ui.setOptions(false, true);
+	ui.setOptions(false, true, true);
 
 	SceneState st;
 	st.screenPos = {0, 1.30f, -2.2f};
@@ -489,6 +489,8 @@ int main(int argc, char **argv) {
 			check(k.keyCount == 1 && k.keys[0] == 13, "clavier : Entrée");
 			k = press(1.0f, 0.5f);
 			check(k.action == kUiActionToggleFire, "clavier : bouton du feu");
+			k = press(6.0f, 0.5f);
+			check(k.action == kUiActionToggleTable, "clavier : bouton de la table");
 			in.keyboardOpen = false;
 		}
 		// 10. Image entière : pas de fenêtres, le coin de l'écran donne le coin de l'image

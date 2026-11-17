@@ -50,6 +50,7 @@ struct RoomInfo {
 
 // Images fournies par le joueur (fenêtre, portrait au-dessus de la cheminée).
 struct RoomOptions {
+	bool table = true; // table de lecture et tabouret devant le joueur
 	bool windowImage = false;
 	float windowAspect = 1.6f; // largeur / hauteur
 	bool portraitImage = false;

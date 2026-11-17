@@ -319,6 +319,8 @@ void main() {
 		vec2 fpp = (tc - clamp(tc, -region, region)) * 4.0 + 0.5;
 		vec2 p = (ti + fpp) / uGameSize;
 		c = texture(uGame, clamp(p, uRect.xy, uRect.zw)).rgb;
+		if (uGlow > 0.5)
+			c = vec3(0.0);
 		if (vUv.x > uHot.x && vUv.x < uHot.z && vUv.y > uHot.y && vUv.y < uHot.w)
 			c = mix(c, vec3(1.0, 0.80, 0.40), 0.30) + vec3(0.06, 0.04, 0.0);
 	}
@@ -546,6 +548,13 @@ void Scene::Impl::rebuildRoom() {
 	uploadLitMesh(roomAlpha, alpha.verts, GL_STATIC_DRAW);
 	roomDirty = false;
 	SCENE_LOG("décor prêt (thème %s, %d sommets)", themeInfo(loadedTheme).name, (int)solid.verts.size());
+}
+
+void Scene::setTable(bool on) {
+	if (d->roomOptions.table != on) {
+		d->roomOptions.table = on;
+		d->roomDirty = true;
+	}
 }
 
 // Copie une image du joueur dans deux couches du tableau de textures (moitié gauche, moitié droite).
@@ -947,6 +956,7 @@ void Scene::prepare(const SceneState &s) {
 		pd.rect[0] = pn.u0; pd.rect[1] = pn.v0; pd.rect[2] = pn.u1; pd.rect[3] = pn.v1;
 		pd.border[0] = du; pd.border[1] = dv;
 		pd.alpha = pn.alpha;
+		pd.glow = pn.blank ? 1.0f : 0.0f; // pour un panneau : éteint
 		for (int k = 0; k < 4; k++)
 			pd.hot[k] = pn.hot[k];
 		pd.texture = tex;

@@ -489,7 +489,8 @@ bool CoreHost::gameState(GameState &out) const {
 	out.hurtDamage = s->hurtDamage;
 	out.hitDamage = s->hitDamage;
 	out.loopSerial = (uint32_t)s->reserved[0];
-	out.controlMode = s->reserved[1];
+	out.controlMode = s->reserved[1] & 0xFF;
+	out.charSheet = (s->reserved[1] & 0x100) != 0;
 	out.characters = s->reserved[3];
 	out.automapOpen = (s->reserved[2] & 1) != 0;
 	out.menuOpen = (s->reserved[2] & (2 | 4)) != 0; // menu du jeu, ou menu de ScummVM (jeu en pause)

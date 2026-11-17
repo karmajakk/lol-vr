@@ -3,6 +3,14 @@
 Format : [versionnage sémantique](https://semver.org/lang/fr/). Tant que le numéro commence par 0,
 le projet est en développement et tout peut encore changer.
 
+## [0.8.0] — Fiche de personnage dans l'écran, table au choix
+
+- La fiche d'un personnage s'affiche en entier dans l'écran (qui s'élargit vers la droite) ; les
+  fenêtres restent en place et celle de la boussole s'éteint. Remplace le retour à l'image
+  entière de la 0.7.1, qui ne concerne plus que le menu ScummVM.
+- Bouton « Table » sous le clavier (X) : affiche ou retire la table et le tabouret.
+- Le bouton « Tout ranger » s'appelle maintenant « Ranger ».
+
 ## [0.7.1] — Fiche de personnage et menu ScummVM en image entière
 
 - Quand on ouvre la fiche d'un personnage, l'image entière revient à l'écran (la fiche n'est plus

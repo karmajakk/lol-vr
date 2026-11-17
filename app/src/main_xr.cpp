@@ -472,6 +472,9 @@ struct App {
 	bool layoutLoaded = false;
 	// Atlas : copie de la dernière carte consultée
 	float viewLift = 0.0f; // la vue du donjon seule est remontée d'autant (mètres)
+	float viewShift = 0.0f; // la fiche d'un personnage, plus large, déborde d'autant vers la droite
+	bool charSheet = false; // la fiche d'un personnage est ouverte
+	bool tableOn = true;    // la table de lecture est dans la bibliothèque
 	int moveDir = 0;       // direction tenue au joystick gauche
 	double imagesCheckedAt = -100.0;
 	bool imageLoaded[4] = {false, false, false, false};
@@ -1047,6 +1050,9 @@ void loadSettings(App &app, int &environment) {
 		} else if (!strcmp(name, "feu")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.fireOn = iv != 0;
+		} else if (!strcmp(name, "table")) {
+			if (sscanf(rest, "%d", &iv) == 1)
+				app.tableOn = iv != 0;
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
@@ -1088,6 +1094,7 @@ void saveSettings(App &app) {
 		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
 	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
 	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
+	fprintf(f, "table %d\n", app.tableOn ? 1 : 0);
 	for (int i = 0; i < kEnvCount; i++)
 		fprintf(f, "visee %d %.4f %.4f\n", app.aimSaved[i] ? 1 : 0, app.aimYaw[i], app.aimPitch[i]);
 	if (app.ui.hasLayout())
@@ -1291,7 +1298,8 @@ void updateGameEvents(App &app, double now) {
 		app.automapSince = now;
 	app.automapOpen = gs.automapOpen;
 	bool wanted = app.gameStarted && gs.controlMode == 0 && !gs.automapOpen && !gs.menuOpen;
-	app.inDungeon = wanted;
+	app.charSheet = gs.charSheet;
+	app.inDungeon = wanted && !gs.charSheet;
 	app.characters = gs.characters >= 1 && gs.characters <= 4 ? gs.characters : 0;
 	if (app.selectedChar >= app.characters)
 		app.selectedChar = 0;
@@ -1362,7 +1370,7 @@ void updateGameEvents(App &app, double now) {
 
 // Centre de ce que l'écran affiche (la vue du donjon seule est remontée).
 Vec3 viewCenter(const App &app) {
-	return app.screenPos + Vec3{0, app.viewLift, 0};
+	return app.screenPos + Vec3{0, app.viewLift, 0} + rotate(screenRot(app), {app.viewShift, 0, 0});
 }
 
 // ---------------------------------------------------------------------------
@@ -1380,11 +1388,16 @@ void updateLayout(App &app, double now) {
 	if (app.split) {
 		// La vue seule est un peu moins haute que l'image entière et remontée, pour laisser la place
 		// aux fenêtres du groupe et de l'inventaire dessous, dans le même plan.
-		app.cropX = kViewX; app.cropY = kViewY; app.cropW = kViewW; app.cropH = kViewH;
+		// La fiche d'un personnage couvre la vue et la colonne de droite : l'écran s'élargit vers la
+		// droite pour la montrer en entier, et les fenêtres restent en place.
+		float cw = app.charSheet ? 320.0f - kViewX : kViewW;
+		app.cropX = kViewX; app.cropY = kViewY; app.cropW = cw; app.cropH = kViewH;
 		app.dispH = w * lolvr::kSplitViewHeight;
-		app.dispW = app.dispH * kViewW / (kViewH * 1.2f);
+		app.dispW = app.dispH * cw / (kViewH * 1.2f);
 		app.viewLift = w * lolvr::kSplitViewLift;
+		app.viewShift = (app.dispW - app.dispH * kViewW / (kViewH * 1.2f)) * 0.5f;
 	} else {
+		app.viewShift = 0.0f;
 		app.cropX = 0; app.cropY = 0; app.cropW = 320; app.cropH = 200;
 		app.dispW = w;
 		app.dispH = w * 0.75f;
@@ -1605,14 +1618,17 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 		in.partyMark[2] = 66.0f;
 		in.partyMark[3] = 34.0f;
 	}
-	app.ui.setOptions(app.fireOn, app.detached);
+	app.ui.setOptions(app.fireOn, app.detached, app.tableOn);
+	app.scene.setTable(app.tableOn);
+	in.table = app.tableOn;
+	in.compassBlank = app.split && app.charSheet;
 	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
 	if (!app.ui.hasLayout() && app.screenPlaced)
 		app.ui.resetLayout(in);
 	app.ui.update(in, out, app.ss);
 
 	if (out.screenDragging)
-		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0}, out.screenZoom);
+		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0} - rotate(screenRot(app), {app.viewShift, 0, 0}), out.screenZoom);
 	if (out.screenResizing)
 		resizeScreen(app, out.screenZoom);
 	for (int i = 0; i < out.keyCount; i++)
@@ -1620,6 +1636,10 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	switch (out.action) {
 	case lolvr::kUiActionToggleFire:
 		app.fireOn = !app.fireOn;
+		app.settingsDirty = true;
+		break;
+	case lolvr::kUiActionToggleTable:
+		app.tableOn = !app.tableOn;
 		app.settingsDirty = true;
 		break;
 	case lolvr::kUiActionToggleDetach:

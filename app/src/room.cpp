@@ -832,11 +832,13 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	mb.resetTransform();
 
 	// --- Table de travail, tabouret, tapis, lustre ---
-	mb.setTransform(place({0, 0, -0.62f}, 0.0f));
-	table(mb, info, rng);
-	mb.setTransform(place({1.45f, 0, -0.25f}, 0.0f));
-	stool(mb, info);
-	mb.resetTransform();
+	if (opt.table) {
+		mb.setTransform(place({0, 0, -0.62f}, 0.0f));
+		table(mb, info, rng);
+		mb.setTransform(place({1.45f, 0, -0.25f}, 0.0f));
+		stool(mb, info);
+		mb.resetTransform();
+	}
 	{
 		const float rw = 3.3f, rd = 2.25f, rz = -0.35f;
 		Material rug = mat(kTexRug, {1, 1, 1});
@@ -865,7 +867,8 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	Vec3 warm = {1.0f, 0.60f, 0.26f};
 	Vec3 fire = {1.0f * th.fireTint[0], 0.46f * th.fireTint[1], 0.15f * th.fireTint[2]};
 	info.lights.push_back({{fx - 0.55f, 0.60f, -0.6f}, fire * 2.4f, 1.7f, 1.0f, kLightFire});
-	info.lights.push_back({{0.66f, kTableHeight + 0.30f, -0.72f}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
+	if (opt.table)
+		info.lights.push_back({{0.66f, kTableHeight + 0.30f, -0.72f}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
 	info.lights.push_back({{0, 2.45f, 0.75f}, warm * 0.85f, 1.8f, 0.10f, kLightWarm});
 	info.lights.push_back({{-X + 0.55f, 1.85f, wzc}, Vec3{th.windowLight[0], th.windowLight[1], th.windowLight[2]} * 2.6f, 1.9f, 0.0f, kLightWindow});
 	info.lights.push_back({{-1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});

@@ -118,7 +118,7 @@ struct Canvas {
 struct Ui::Impl {
 	std::vector<Key> keys;
 	bool shift = false;
-	bool fireOn = false, detached = true;
+	bool fireOn = false, detached = true, tableOn = true;
 	std::string info[2];
 	GLuint kbTex = 0;
 	bool kbDirty = true;
@@ -143,9 +143,10 @@ struct Ui::Impl {
 
 void Ui::Impl::buildKeys() {
 	keys.clear();
-	keys.push_back({0, 0, 3, "", "", 0, kUiActionToggleFire});
-	keys.push_back({3, 0, 3, "", "", 0, kUiActionToggleDetach});
-	keys.push_back({6, 0, 3, "Tout ranger", "", 0, kUiActionResetLayout});
+	keys.push_back({0, 0, 2, "", "", 0, kUiActionToggleFire});
+	keys.push_back({2, 0, 3, "", "", 0, kUiActionToggleDetach});
+	keys.push_back({5, 0, 2, "", "", 0, kUiActionToggleTable});
+	keys.push_back({7, 0, 2, "Ranger", "", 0, kUiActionResetLayout});
 	keys.push_back({9, 0, 2, "Fermer", "", 0, kUiActionCloseKeyboard});
 	const char *digits = "1234567890";
 	for (int i = 0; i < 10; i++)
@@ -173,13 +174,14 @@ void Ui::Impl::buildKeys() {
 void Ui::Impl::renderKeyboard() {
 	Canvas cv{kKbW, kKbH, std::vector<uint8_t>((size_t)kKbW * kKbH * 4)};
 	cv.rect(0, 0, kKbW, kKbH, 34, 24, 16);
-	keys[0].label = fireOn ? "Feu : oui" : "Feu : non";
-	keys[1].label = detached ? "Panneaux : oui" : "Panneaux : non";
+	keys[0].label = fireOn ? "Feu: oui" : "Feu: non";
+	keys[1].label = detached ? "Panneaux: oui" : "Panneaux: non";
+	keys[2].label = tableOn ? "Table: oui" : "Table: non";
 	for (size_t i = 0; i < keys.size(); i++) {
 		const Key &k = keys[i];
 		int x0 = k.col * kCellW + 2, y0 = k.row * kCellH + 2, x1 = (k.col + k.span) * kCellW - 2, y1 = (k.row + 1) * kCellH - 2;
 		bool option = k.row == 0;
-		bool lit = (k.action == -1 && shift) || (k.action == kUiActionToggleFire && fireOn) || (k.action == kUiActionToggleDetach && detached);
+		bool lit = (k.action == -1 && shift) || (k.action == kUiActionToggleFire && fireOn) || (k.action == kUiActionToggleDetach && detached) || (k.action == kUiActionToggleTable && tableOn);
 		// Touche en relief : bord clair en haut, sombre en bas
 		cv.rect(x0, y0, x1, y1, 30, 20, 12);
 		if (lit)
@@ -228,9 +230,10 @@ void Ui::initGl(bool srgb) {
 	d->kbDirty = true;
 }
 
-void Ui::setOptions(bool fireOn, bool detached) {
-	if (fireOn != d->fireOn || detached != d->detached)
+void Ui::setOptions(bool fireOn, bool detached, bool table) {
+	if (fireOn != d->fireOn || detached != d->detached || table != d->tableOn)
 		d->kbDirty = true;
+	d->tableOn = table;
 	d->fireOn = fireOn;
 	d->detached = detached;
 }
@@ -293,7 +296,7 @@ Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	p.x = clampf(p.x, -mx, mx);
 	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
 	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
-	if (fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
+	if (in.table && fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
 		lo = kTableTop + hh + 0.03f;
 	if (hi < lo)
 		hi = lo;
@@ -645,8 +648,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			}
 		} else {
 			const Source &src = kSources[hitIndex];
-			out.pointerValid = true;
-			out.buttonsToGame = true;
+			bool off = hitIndex == kPanelCompass && in.compassBlank; // fenêtre éteinte : aucun clic
+			out.pointerValid = !off;
+			out.buttonsToGame = !off;
 			out.gu = (src.x + u * src.w) / 320.0f;
 			out.gv = (src.y + v * src.h) / 200.0f;
 		}
@@ -686,6 +690,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				p.u1 = (src.x + src.w) / 320.0f;
 				p.v0 = src.y / 200.0f;
 				p.v1 = (src.y + src.h) / 200.0f;
+				p.blank = i == kPanelCompass && in.compassBlank;
 				if (i == kPanelParty && in.partyMark[2] > 0.0f) {
 					p.hot[0] = in.partyMark[0] / 320.0f;
 					p.hot[1] = in.partyMark[1] / 200.0f;

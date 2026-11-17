@@ -58,6 +58,7 @@ struct SceneState {
 		int texW = 0, texH = 0;
 		float border = 0.009f;                // largeur de la bordure, en mètres
 		float hot[4] = {0, 0, 0, 0};          // zone mise en valeur (u0, v0, u1, v1), vide = aucune
+		bool blank = false;                   // fenêtre éteinte : du noir à la place de l'image
 	};
 	static const int kMaxPanels = 10;
 	Panel panels[kMaxPanels];
@@ -89,6 +90,8 @@ public:
 	// Image fournie par le joueur. slot 0 : vue par la fenêtre ; slot 1 : portrait au-dessus de la
 	// cheminée ; slots 2 et 3 : deux autres tableaux. rgba : w x h pixels, première ligne en haut. À appeler après init(), sur le fil OpenGL.
 	void setImage(int slot, const unsigned char *rgba, int w, int h);
+	// Affiche ou retire la table de lecture de la bibliothèque.
+	void setTable(bool on);
 	// À appeler une fois par image, avant render() : thèmes, objets animés.
 	void prepare(const SceneState &state);
 	// Dessine une vue. Le tampon de destination (couleur + profondeur) doit être lié et le

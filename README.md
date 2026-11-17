@@ -56,7 +56,7 @@ simplement le nouvel APK par-dessus l'ancien.
 | A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
 | B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
 | Y | Carte |
-| **X** | **Clavier et options** : taper un nom de sauvegarde, couper ou remettre le son du feu, détacher ou non l'interface, tout ranger |
+| **X** | **Clavier et options** : taper un nom de sauvegarde, couper ou remettre le son du feu, détacher ou non l'interface, afficher ou retirer la table, ranger les fenêtres |
 | Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |
 | Clic du joystick droit | Recentrer l'écran, la pièce et les panneaux devant soi |
 | Clic bref du joystick gauche | Changer de décor : bibliothèque → réalité mixte avec cadre → réalité mixte avec moniteur cathodique |
@@ -84,9 +84,10 @@ décalage, ce qui permet de ramasser un objet au sol et de le déposer dans l'in
 Chaque fenêtre est indépendante : déplacer ou agrandir l'écran ne bouge pas les autres. Dans la
 bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table.
 Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image
-entière revient d'elle-même.
+entière revient d'elle-même. La fiche d'un personnage, elle, s'affiche en entier dans l'écran
+(qui s'élargit vers la droite) ; les fenêtres restent en place et celle de la boussole s'éteint.
 
-Le bouton « Panneaux » du clavier (X) rend l'image entière en permanence, et « Tout ranger »
+Le bouton « Panneaux » du clavier (X) rend l'image entière en permanence, et « Ranger »
 range les panneaux autour de l'écran, là où il se trouve.
 
 ## Les décors

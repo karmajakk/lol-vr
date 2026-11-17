@@ -10,7 +10,7 @@
 | A | Dans le donjon : **attaquer** avec le personnage choisi. Ailleurs : Entrée |
 | B | Dans le donjon : ouvrir la **magie** du personnage choisi. Ailleurs : Échap (passer une cinématique) |
 | Y | Carte |
-| **X** | **Clavier et options** : taper un nom de sauvegarde, son du feu, panneaux, tout ranger |
+| **X** | **Clavier et options** : taper un nom de sauvegarde, son du feu, panneaux, table, ranger |
 | Bouton menu (manette gauche) | Menu ScummVM : sauvegarder, charger, quitter |
 | Clic du joystick droit | Recentrer l'écran, la pièce et les panneaux devant soi |
 | Clic bref du joystick gauche | Changer de décor (bibliothèque → réalité mixte avec cadre → réalité mixte avec moniteur) |
@@ -37,7 +37,7 @@ Dans le donjon, un personnage est « choisi » : son cadre s'éclaire dans la fe
 
 ## Clavier (bouton X)
 
-Un clavier virtuel s'ouvre, utile pour nommer une sauvegarde. Sa première rangée contient les options : Feu (son de la cheminée), Panneaux (interface détachée ou image entière), Tout ranger, Fermer. Sous les touches, deux lignes indiquent quelles images personnelles sont affichées.
+Un clavier virtuel s'ouvre, utile pour nommer une sauvegarde. Sa première rangée contient les options : Feu (son de la cheminée), Panneaux (interface détachée ou image entière), Table (afficher ou retirer la table de la bibliothèque), Ranger, Fermer. Sous les touches, deux lignes indiquent quelles images personnelles sont affichées.
 
 ## Vibrations
 

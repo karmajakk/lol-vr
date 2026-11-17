@@ -7,7 +7,7 @@ Normal au premier lancement. Copiez le contenu du CD dans `Android/data/com.karm
 Ouvrez le clavier (bouton X) et lisez les deux lignes sous les touches : elles disent quelles images sont affichées et quels fichiers l'application voit. « Dossier decor vide » signifie que les fichiers ne sont pas dans `Android/data/com.karmajakk.lolvr/files/decor` ; « Illisible » signifie que le format n'est pas pris en charge (utilisez PNG ou JPEG, pas WebP ni HEIC). Voir [[Décors et images|Decors-et-images]].
 
 **Les fenêtres ou l'écran sont mal placés.**
-Clic du joystick droit pour recentrer, ou bouton X → « Tout ranger ».
+Clic du joystick droit pour recentrer, ou bouton X → « Ranger ».
 
 **Un reflet ou une lumière parasite sur l'image du jeu.**
 Signalez-le dans les [Issues](https://github.com/karmajakk/lol-vr/issues) en précisant à quel endroit de l'écran.

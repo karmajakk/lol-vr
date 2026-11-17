@@ -14,4 +14,6 @@ Chaque fenêtre est **indépendante** : déplacer ou agrandir l'écran ne bouge 
 
 Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image entière revient d'elle-même.
 
-Le bouton **Panneaux** du clavier (X) rend l'image entière en permanence ; **Tout ranger** range les panneaux autour de l'écran, là où il se trouve. Pour déplacer ou agrandir une fenêtre, voir [[Commandes]].
+La **fiche d'un personnage** s'affiche en entier dans l'écran, qui s'élargit vers la droite le temps qu'elle est ouverte. Les fenêtres restent en place ; celle de la boussole s'éteint (noir), car la fiche occupe sa partie de l'image.
+
+Le bouton **Panneaux** du clavier (X) rend l'image entière en permanence ; **Ranger** range les panneaux autour de l'écran, là où il se trouve. Pour déplacer ou agrandir une fenêtre, voir [[Commandes]].
