@@ -1,7 +1,12 @@
 name: Compiler l'APK
 
+# Chaque envoi de code est compilé pour vérifier qu'il fonctionne.
+# Une version n'est publiée que lorsqu'on crée une étiquette « vX.Y.Z » :
+# l'APK est alors joint à la publication et les notes viennent de CHANGELOG.md.
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -26,14 +31,27 @@ jobs:
       - name: Construire l'APK
         run: |
           export LOLVR_VERSION_CODE="${GITHUB_RUN_NUMBER}"
-          export LOLVR_VERSION_NAME="0.5.${GITHUB_RUN_NUMBER}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            export LOLVR_VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            export LOLVR_VERSION_NAME="dev-${GITHUB_RUN_NUMBER}"
+          fi
           scripts/build.sh
 
-      - name: Publier l'APK
+      - name: Publier la version
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          TAG="apk-${GITHUB_REF_NAME//\//-}"
-          NOTES="Compilation automatique n° ${GITHUB_RUN_NUMBER} de la branche ${GITHUB_REF_NAME} (${GITHUB_SHA::7}). Installez lol-vr.apk avec SideQuest."
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          sleep 3
-          gh release create "$TAG" build/lol-vr.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Lands of Lore VR — dernière version (${GITHUB_REF_NAME})" --notes "$NOTES" --prerelease
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Notes = la section « ## [X.Y.Z] » du CHANGELOG.md
+          awk -v v="[$VERSION]" '
+            /^## / { if (found) exit; if (index($0, v)) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "Version ${VERSION}. Installez lol-vr.apk avec SideQuest." > notes.md
+          fi
+          echo "" >> notes.md
+          echo "Installation : téléchargez \`lol-vr.apk\` ci-dessous et installez-le avec SideQuest, par-dessus l'ancienne version (les sauvegardes sont conservées)." >> notes.md
+          gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release create "$GITHUB_REF_NAME" build/lol-vr.apk --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "Lands of Lore VR ${VERSION}" --notes-file notes.md --latest

@@ -8,12 +8,15 @@ tourner le jeu original.
 
 ## Où en est le projet
 
-| Étape | Contenu | État |
+Détail des versions : [CHANGELOG.md](CHANGELOG.md).
+
+| Version | Contenu | État |
 |---|---|---|
-| 1 | Le jeu complet sur un écran en VR, manettes comme pointeur, son, sauvegardes | fait |
-| 2 | Bibliothèque médiévale autour de l'écran (qui change selon la zone du jeu), cadre ouvragé, gants, réalité mixte, moniteur cathodique, vibrations, son spatialisé | en test |
-| 3 | Interface détachée : vue du donjon seule à l'écran, panneaux déplaçables, clavier, atlas | en test |
-| 4 | Le donjon en vraie 3D autour de vous | plus tard |
+| 0.1 | Le jeu complet sur un écran flottant en VR, manettes comme pointeur, son, sauvegardes | fait |
+| 0.2 | Bibliothèque médiévale (change selon la zone du jeu), cadre, gants, réalité mixte, moniteur cathodique, vibrations, son spatialisé | fait |
+| 0.3 | Mode fenêtre (donjon agrandi, interface au poignet) | abandonné |
+| 0.4 – 0.5 | Interface détachée en panneaux déplaçables, clavier, écran déplaçable, ordinateur 486, images personnelles, corrections | en test |
+| 1.0 | Le donjon en vraie 3D autour de vous | plus tard |
 
 ## Installation (sans rien compiler)
 
