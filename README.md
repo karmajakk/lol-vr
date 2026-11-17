@@ -69,25 +69,29 @@ Visez la barrette, serrez la gâchette et gardez-la serrée : l'objet suit votre
 joystick droit le pousse ou le tire (haut/bas) et le rapetisse ou l'agrandit (gauche/droite).
 Relâchez la gâchette pour le poser. Tout est mémorisé d'une fois à l'autre.
 
+Pour **agrandir ou réduire** l'écran ou une fenêtre, visez l'un de ses coins, juste à l'extérieur
+(sur le cadre, pour l'écran) : une équerre de laiton apparaît. Serrez la gâchette et écartez ou
+rapprochez la main ; la fenêtre grandit ou rapetisse autour de son centre.
+
 ## L'interface détachée
 
 Pendant l'exploration, l'écran ne montre que la vue du donjon. Le reste de l'interface du jeu est
 réparti sur des fenêtres que l'on place où l'on veut : le groupe (messages et portraits),
 l'inventaire, le parchemin des sorts, les commandes (flèches, options, repos) et la boussole.
-Au départ, elles sont toutes dans le plan de l'écran, autour de la vue : le pointeur passe de
-l'une à l'autre sans décalage, ce qui permet de ramasser un objet au sol et de le déposer dans
-l'inventaire. Elles suivent l'écran quand on le déplace ou qu'on change sa taille. Dans la
-bibliothèque, elles ne traversent ni le plancher, ni les murs, ni la table.
+Au départ, elles sont rangées autour de l'écran : le pointeur passe de l'une à l'autre sans
+décalage, ce qui permet de ramasser un objet au sol et de le déposer dans l'inventaire.
+Chaque fenêtre est indépendante : déplacer ou agrandir l'écran ne bouge pas les autres. Dans la
+bibliothèque, elles ne traversent ni le plancher, ni les murs.
 Dans les cinématiques, les menus, la carte et les scènes qui occupent toute la largeur, l'image
 entière revient d'elle-même.
 
 Le bouton « Panneaux » du clavier (X) rend l'image entière en permanence, et « Tout ranger »
-remet les panneaux à leur place d'origine autour de l'écran.
+range les panneaux autour de l'écran, là où il se trouve.
 
 ## Les décors
 
 - **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux et
-  bannières ; on y est assis à une table de lecture, face à l'écran. La vue par la fenêtre, la
+  bannières ; le milieu de la pièce est libre. La vue par la fenêtre, la
   lumière, un tableau, les bannières et l'ambiance sonore changent selon la zone du jeu.
 - **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
 - **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90 posé
@@ -96,13 +100,16 @@ remet les panneaux à leur place d'origine autour de l'écran.
 ### Vos images dans la bibliothèque (facultatif)
 
 Des images peuvent être ajoutées dans le dossier `Android/data/com.karmajakk.lolvr/files/decor`
-du casque (PNG ou JPEG ; seul le début du nom compte) :
+du casque (PNG ou JPEG) :
 
 - `fenetre.png` : la vue par la fenêtre ;
 - `portrait.png` : le tableau au-dessus de la cheminée ;
 - `tableau1.png`, `tableau2.png` : deux autres tableaux (mur de gauche, mur du fond).
 
-L'application les prend en compte quelques secondes après leur copie, sans redémarrer.
+Le nom peut aussi contenir « chateau », « roi », etc. ; une image au nom quelconque prend la
+première place libre. L'application les prend en compte quelques secondes après leur copie, sans
+redémarrer. Sous le clavier (bouton X), deux lignes indiquent quelles images sont affichées et
+quels fichiers l'application voit dans le dossier.
 
 Ces images ne sont pas fournies avec l'application : comme les fichiers du jeu, chacun y met les siennes.
 

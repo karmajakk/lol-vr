@@ -2,7 +2,7 @@
 
 Trois décors, que l'on change d'un clic bref du joystick gauche :
 
-- **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux, bannières et reliques sur des socles ; on y est assis à une table de lecture, face à l'écran. La vue par la fenêtre, la lumière, un tableau, les bannières et l'ambiance changent selon la zone du jeu.
+- **Bibliothèque médiévale** : une pièce fermée avec cheminée, fenêtre, étagères, tableaux, bannières et reliques sur des socles ; le milieu de la pièce est libre. La vue par la fenêtre, la lumière, un tableau, les bannières et l'ambiance changent selon la zone du jeu.
 - **Réalité mixte** : votre vraie pièce, avec le jeu dans son cadre doré.
 - **Moniteur cathodique** : votre vraie pièce, avec le jeu sur un écran bombé des années 90, posé sur un ordinateur 486.
 
@@ -14,16 +14,18 @@ Copiez des images PNG ou JPEG dans le dossier :
 
 `Android/data/com.karmajakk.lolvr/files/decor`
 
-Seul le **début du nom** compte :
+Le **nom** indique l'emplacement :
 
-| Nom commençant par | Rôle |
+| Nom contenant | Rôle |
 |---|---|
-| `fenetre` | la vue par la fenêtre |
-| `portrait` | le tableau au-dessus de la cheminée |
+| `fenetre` (ou `chateau`, `castle`) | la vue par la fenêtre |
+| `portrait` (ou `roi`, `king`) | le tableau au-dessus de la cheminée |
 | `tableau1` | tableau du mur de gauche |
 | `tableau2` | tableau du mur du fond |
 
-L'application les prend en compte quelques secondes après la copie, sans redémarrer. Ces images ne sont pas fournies : comme les fichiers du jeu, chacun met les siennes.
+Une image au nom quelconque prend la première place libre. L'application les prend en compte quelques secondes après la copie, sans redémarrer.
+
+**Pour vérifier** : ouvrez le clavier (bouton X). Sous les touches, deux lignes indiquent quelles images sont affichées et quels fichiers l'application voit dans le dossier `decor`. Ces images ne sont pas fournies : comme les fichiers du jeu, chacun met les siennes.
 
 ## Son
 

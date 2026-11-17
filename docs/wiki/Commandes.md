@@ -26,9 +26,13 @@ L'écran et chaque panneau portent une **barrette de laiton** au-dessus d'eux.
 
 Les positions sont mémorisées d'une fois à l'autre.
 
+## Agrandir ou réduire
+
+Visez un coin de l'écran ou d'une fenêtre, juste à l'extérieur (sur le cadre, pour l'écran) : une équerre de laiton apparaît. Serrez la gâchette, puis écartez la main pour agrandir ou rapprochez-la pour réduire. La fenêtre change de taille autour de son centre.
+
 ## Clavier (bouton X)
 
-Un clavier virtuel s'ouvre, utile pour nommer une sauvegarde. Sa dernière rangée contient les options : Feu (son de la cheminée), Panneaux (interface détachée ou image entière), Tout ranger, Fermer.
+Un clavier virtuel s'ouvre, utile pour nommer une sauvegarde. Sa première rangée contient les options : Feu (son de la cheminée), Panneaux (interface détachée ou image entière), Tout ranger, Fermer. Sous les touches, deux lignes indiquent quelles images personnelles sont affichées.
 
 ## Vibrations
 

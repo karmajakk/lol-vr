@@ -3,6 +3,8 @@
 // Indépendant de la plateforme (OpenGL ES 3 pour la texture du clavier seulement).
 #pragma once
 
+#include <string>
+
 #include "scene.h"
 
 namespace lolvr {
@@ -17,11 +19,8 @@ enum UiPanelId {
 	kUiPanelCount
 };
 
-// Position d'un panneau.
-//  - Panneaux du jeu : a, b, c = position dans le repère de l'écran (droite, haut, vers le joueur),
-//    en fractions de la largeur de l'image entière ; scale = même unité, par pixel. Ils suivent
-//    donc l'écran quand on le déplace ou qu'on change sa taille.
-//  - Clavier : a = lacet, b = tangage, c = distance depuis le point d'ancrage ; scale en mètres par pixel.
+// Position d'un panneau, indépendante de l'écran : a = lacet, b = tangage, c = distance depuis
+// le point d'ancrage (la place du joueur) ; scale en mètres par pixel.
 struct UiPlacement {
 	float a = 0.0f, b = 0.0f, c = 0.0f, scale = 0.002f;
 };
@@ -47,7 +46,7 @@ struct UiFrameInput {
 	// Repère des panneaux : centre et largeur de l'image entière
 	Vec3 basePos = {0, 0, -2.2f};
 	float fullW = 2.4f;
-	// La pièce (bibliothèque) : les panneaux ne traversent ni le plancher, ni les murs, ni la table.
+	// La pièce (bibliothèque) : les panneaux ne traversent ni le plancher, ni les murs.
 	bool roomClamp = false;
 	Vec3 roomPos = {0, 0, 0};
 	float roomYaw = 0.0f;
@@ -75,6 +74,7 @@ struct UiFrameOutput {
 	// Déplacement à la poignée
 	bool dragging = false;        // un panneau ou l'écran est tenu (le joystick droit le règle)
 	bool screenDragging = false;  // … et c'est l'écran principal
+	bool screenResizing = false;  // un coin de l'écran est tenu : appliquer screenZoom à sa taille
 	Vec3 screenCenter = {0, 0, 0}; // où le joueur veut l'écran
 	float screenZoom = 1.0f;      // facteur à appliquer à sa taille
 	bool layoutChanged = false;   // à mémoriser
@@ -95,7 +95,9 @@ public:
 	void initGl(bool srgb);
 	// Étiquettes des boutons d'options.
 	void setOptions(bool fireOn, bool detached);
-	// Disposition par défaut : tout dans le plan de l'écran, autour de la vue du donjon.
+	// Deux lignes d'information affichées sous le clavier (Latin-1).
+	void setInfo(const std::string &line1, const std::string &line2);
+	// Disposition par défaut : autour de l'écran tel qu'il est placé à cet instant.
 	void resetLayout(const UiFrameInput &in);
 	bool hasLayout() const { return placed; }
 	void setHasLayout(bool v) { placed = v; }

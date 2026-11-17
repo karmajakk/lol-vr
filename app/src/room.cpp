@@ -368,67 +368,6 @@ void sconce(MeshBuilder &mb, RoomInfo &info) {
 	candle(mb, info, {0, -0.055f, 0.13f}, 0.12f, 0.014f);
 }
 
-// Table de lecture placée devant le joueur, comme s'il y était assis. Le milieu du plateau
-// reste dégagé : rien ne dépasse dans le champ de l'écran.
-const float kTableHeight = 0.66f;
-
-void table(MeshBuilder &mb, RoomInfo &info, Rng &rng) {
-	(void)rng;
-	Material wood = mat(kTexWood, {1, 1, 1}, 1.2f);
-	const float w = 1.60f, d = 0.56f, h = kTableHeight;
-	mb.box({0, h - 0.022f, 0}, {w * 0.5f, 0.022f, d * 0.5f}, wood);
-	mb.box({0, h - 0.085f, 0}, {w * 0.5f - 0.07f, 0.04f, d * 0.5f - 0.06f}, wood);
-	for (int i = 0; i < 4; i++) {
-		float sx = (i & 1) ? 1.0f : -1.0f, sz = (i & 2) ? 1.0f : -1.0f;
-		mb.box({sx * (w * 0.5f - 0.07f), (h - 0.044f) * 0.5f, sz * (d * 0.5f - 0.07f)}, {0.032f, (h - 0.044f) * 0.5f, 0.032f}, wood, 63, 0.55f);
-	}
-	mb.box({0, 0.14f, -d * 0.5f + 0.07f}, {w * 0.5f - 0.08f, 0.02f, 0.025f}, wood);
-	info.shadows.push_back({transformPoint(mb.xf, {0, 0.012f, 0}), w * 0.60f, d * 0.85f, 0.55f});
-
-	// À gauche : grimoire ouvert, crâne, fioles
-	Mat4 saved = mb.xf;
-	mb.setTransform(multiply(saved, place({-0.52f, h, 0.02f}, 10.0f)));
-	mb.box({0, 0.008f, 0}, {0.205f, 0.008f, 0.14f}, mat(kTexLeather, {0.36f, 0.09f, 0.07f}, 3.0f));
-	Material page = mat(kTexPaper, {1, 1, 1}, 1.0f, 0.06f);
-	const float px[4] = {0.0f, 0.07f, 0.14f, 0.195f}, py[4] = {0.020f, 0.036f, 0.034f, 0.024f};
-	for (int sgn = -1; sgn <= 1; sgn += 2)
-		for (int k = 0; k < 3; k++) {
-			float xa = (float)sgn * px[k], xb = (float)sgn * px[k + 1];
-			float ua = 0.5f + (float)sgn * (px[k] / 0.195f) * 0.47f, ub = 0.5f + (float)sgn * (px[k + 1] / 0.195f) * 0.47f;
-			Vec3 a{xa, py[k], 0.13f}, b{xb, py[k + 1], 0.13f}, c{xb, py[k + 1], -0.13f}, e{xa, py[k], -0.13f};
-			if (sgn > 0)
-				mb.quad(a, b, c, e, page, ua, 0.03f, ub, 0.97f);
-			else
-				mb.quad(b, a, e, c, page, ub, 0.03f, ua, 0.97f);
-		}
-	mb.setTransform(saved);
-	greenSkull(mb, info, {-0.70f, h, -0.19f}, 25.0f);
-	potion(mb, info, {-0.56f, h, -0.21f}, {0.80f, 0.14f, 0.12f}, 0.9f);
-	potion(mb, info, {-0.47f, h, -0.19f}, {0.35f, 0.40f, 0.90f}, 0.7f);
-
-	// À droite : lanterne, encrier et plume, parchemin roulé
-	lantern(mb, info, {0.66f, h, -0.16f});
-	const ProfilePoint ink[] = {{0.0f, 0.0f}, {0.028f, 0.002f}, {0.030f, 0.03f}, {0.016f, 0.042f}, {0.018f, 0.048f}, {0.0f, 0.048f}};
-	mb.lathe({0.50f, h, -0.20f}, ink, 6, 8, mat(kTexMetal, {0.10f, 0.10f, 0.14f}, 4.0f));
-	mb.rod({0.50f, h + 0.04f, -0.20f}, {0.55f, h + 0.22f, -0.24f}, 0.003f, 0.002f, 4, mat(kTexWhite, {0.9f, 0.88f, 0.8f}));
-	Material feather = mat(kTexWhite, {0.88f, 0.86f, 0.80f});
-	Vec3 q0{0.518f, h + 0.11f, -0.214f}, q1{0.55f, h + 0.22f, -0.24f};
-	Vec3 off{0.026f, -0.006f, 0.018f};
-	mb.quad(q0, q0 + off, q1 + off * 0.5f, q1, feather);
-	mb.quad(q0 + off, q0, q1, q1 + off * 0.5f, feather);
-	mb.rod({0.46f, h + 0.022f, 0.10f}, {0.72f, h + 0.022f, 0.16f}, 0.022f, 0.022f, 10, mat(kTexWhite, kPaperTint));
-}
-
-void stool(MeshBuilder &mb, RoomInfo &info) {
-	Material wood = mat(kTexWood, {0.9f, 0.9f, 0.9f}, 2.0f);
-	mb.cylinder({0, 0.42f, 0}, 0.17f, 0.18f, 0.04f, 14, wood, true, true);
-	for (int i = 0; i < 3; i++) {
-		float a = (float)i / 3.0f * 2.0f * kPi + 0.4f;
-		mb.rod({cosf(a) * 0.17f, 0.0f, sinf(a) * 0.17f}, {cosf(a) * 0.10f, 0.42f, sinf(a) * 0.10f}, 0.018f, 0.022f, 6, wood, false);
-	}
-	info.shadows.push_back({transformPoint(mb.xf, {0, 0.012f, 0}), 0.26f, 0.26f, 0.5f});
-}
-
 void chest(MeshBuilder &mb, RoomInfo &info) {
 	Material wood = mat(kTexWood, {0.85f, 0.8f, 0.75f}, 1.6f);
 	Material iron = mat(kTexMetal, kIron, 4.0f);
@@ -831,12 +770,7 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 	}
 	mb.resetTransform();
 
-	// --- Table de travail, tabouret, tapis, lustre ---
-	mb.setTransform(place({0, 0, -0.62f}, 0.0f));
-	table(mb, info, rng);
-	mb.setTransform(place({1.45f, 0, -0.25f}, 0.0f));
-	stool(mb, info);
-	mb.resetTransform();
+	// --- Tapis, lustre (le milieu de la pièce reste libre) ---
 	{
 		const float rw = 3.3f, rd = 2.25f, rz = -0.35f;
 		Material rug = mat(kTexRug, {1, 1, 1});
@@ -859,14 +793,17 @@ void buildRoom(MeshBuilder &mb, MeshBuilder &alpha, RoomInfo &info, int theme, c
 			yy += t;
 		}
 		info.shadows.push_back({{-2.15f, 0.012f, -1.45f}, 0.24f, 0.22f, 0.45f});
+		// Dessus, le crâne vert ; à côté, une lanterne posée par terre.
+		greenSkull(mb, info, {-2.15f, yy, -1.45f}, 35.0f);
+		lantern(mb, info, {-1.80f, 0.0f, -1.62f});
 	}
 
 	// --- Lumières ---
 	Vec3 warm = {1.0f, 0.60f, 0.26f};
 	Vec3 fire = {1.0f * th.fireTint[0], 0.46f * th.fireTint[1], 0.15f * th.fireTint[2]};
 	info.lights.push_back({{fx - 0.55f, 0.60f, -0.6f}, fire * 2.4f, 1.7f, 1.0f, kLightFire});
-	info.lights.push_back({{0.66f, kTableHeight + 0.30f, -0.72f}, warm * 0.55f, 0.8f, 0.25f, kLightWarm});
 	info.lights.push_back({{0, 2.45f, 0.75f}, warm * 0.85f, 1.8f, 0.10f, kLightWarm});
+	info.lights.push_back({{-1.80f, 0.34f, -1.62f}, warm * 0.40f, 0.7f, 0.25f, kLightWarm});
 	info.lights.push_back({{-X + 0.55f, 1.85f, wzc}, Vec3{th.windowLight[0], th.windowLight[1], th.windowLight[2]} * 2.6f, 1.9f, 0.0f, kLightWindow});
 	info.lights.push_back({{-1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});
 	info.lights.push_back({{1.62f, 2.05f, ZF + 0.35f}, warm * 0.45f, 0.9f, 0.15f, kLightWarm});

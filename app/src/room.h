@@ -12,8 +12,6 @@ const float kRoomHalfX = 2.7f;
 const float kRoomFrontZ = -3.5f;
 const float kRoomBackZ = 2.7f;
 const float kRoomHeight = 3.3f;
-// Table de lecture devant le joueur (repère de la pièce)
-const float kTableZ = -0.62f, kTableHalfW = 0.80f, kTableHalfD = 0.28f, kTableTop = 0.66f;
 
 enum LightKind { kLightWarm = 0, kLightWindow = 1, kLightFire = 2 };
 

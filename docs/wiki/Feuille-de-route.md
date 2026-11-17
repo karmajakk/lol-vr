@@ -6,7 +6,7 @@ Ce sont des pistes, pas des promesses.
 
 - Valider dans le casque la détection des états du jeu (donjon, menu, carte), les performances et le confort.
 - Empêcher les fenêtres de traverser les étagères et les objets.
-- Réglages accessibles dans la VR, positions mémorisées par disposition.
+- Réglages accessibles dans la VR.
 
 ## Immersion
 

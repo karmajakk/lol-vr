@@ -30,7 +30,8 @@ struct Source {
 
 // Clavier : grille de 11 colonnes sur 6 rangées.
 const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 6;
-const int kKbW = kCellW * kCols, kKbH = kCellH * kRows;
+const int kInfoH = 44; // deux lignes d'information sous les touches
+const int kKbW = kCellW * kCols, kKbH = kCellH * kRows + kInfoH;
 
 const Source kSources[kUiPanelCount] = {
 	{83, 121, 237, 58},  // groupe : ligne de messages + portraits
@@ -118,6 +119,7 @@ struct Ui::Impl {
 	std::vector<Key> keys;
 	bool shift = false;
 	bool fireOn = false, detached = true;
+	std::string info[2];
 	GLuint kbTex = 0;
 	bool kbDirty = true;
 	bool srgb = true;
@@ -130,6 +132,10 @@ struct Ui::Impl {
 	int drag = -1;
 	float grabDist = 1.0f;
 	Vec3 grabOffset = {0, 0, 0};
+	// Coin tenu (agrandir ou réduire) : même codage que « drag ».
+	int resize = -1;
+	float resizeSx = 1.0f, resizeSy = 1.0f; // quel coin
+	float resizeRef = 0.0f;                 // distance du doigt au centre, à l'image précédente
 
 	void buildKeys();
 	void renderKeyboard();
@@ -189,6 +195,8 @@ void Ui::Impl::renderKeyboard() {
 		int tw = (int)label.size() * 8 * scale, th = 16 * scale;
 		cv.text(label, (x0 + x1 - tw) / 2, (y0 + y1 - th) / 2 - (scale == 2 ? 2 : 0), scale, 250, 236, 200);
 	}
+	for (int l = 0; l < 2; l++)
+		cv.text(info[l].substr(0, (size_t)(kKbW - 12) / 8), 6, kCellH * kRows + 4 + l * 19, 1, 214, 196, 150);
 	if (!kbTex)
 		glGenTextures(1, &kbTex);
 	glBindTexture(GL_TEXTURE_2D, kbTex);
@@ -227,12 +235,30 @@ void Ui::setOptions(bool fireOn, bool detached) {
 	d->detached = detached;
 }
 
+void Ui::setInfo(const std::string &line1, const std::string &line2) {
+	if (line1 != d->info[0] || line2 != d->info[1])
+		d->kbDirty = true;
+	d->info[0] = line1;
+	d->info[1] = line2;
+}
+
 void Ui::resetLayout(const UiFrameInput &in) {
-	// Tout est dans le plan de l'écran, comme un seul grand tableau de bord : le doigt passe d'une
-	// fenêtre à l'autre sans décalage. Unités : fractions de la largeur de l'image entière.
+	// Au départ, tout est dans le plan de l'écran, autour de la vue du donjon. Chaque fenêtre est
+	// ensuite indépendante : sa position est notée par rapport au joueur (lacet, tangage, distance),
+	// et plus rien ne la lie à l'écran. Unités de travail : fractions de la largeur de l'image entière.
+	const float fullW = in.fullW > 0.05f ? in.fullW : 0.05f;
 	const float viewH = kSplitViewHeight, viewW = viewH * 176.0f / 144.0f, viewY = kSplitViewLift;
 	const float frame = 0.092f * viewW, top = viewY + viewH * 0.5f, bottom = viewY - viewH * 0.5f;
-	auto set = [&](int id, float x, float y, float scale) { placement[id] = {x, y, 0.0f, scale}; };
+	auto set = [&](int id, float x, float y, float scale) {
+		Vec3 c = in.basePos + rotate(in.screenRot, Vec3{x, y, 0.0f} * fullW);
+		Vec3 v = c - in.anchorPos;
+		float dist = clampf(length(v), 0.20f, 6.0f);
+		UiPlacement &pl = placement[id];
+		pl.c = dist;
+		pl.b = clampf(asinf(clampf(v.y / dist, -1.0f, 1.0f)), -1.35f, 1.35f);
+		pl.a = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
+		pl.scale = clampf(scale * fullW, 0.0004f, 0.02f);
+	};
 	auto halfW = [](int id, float scale) { return kSources[id].w * scale * 0.5f; };
 	auto halfH = [](int id, float scale) { return kSources[id].h * 1.2f * scale * 0.5f; };
 
@@ -259,7 +285,7 @@ void Ui::resetLayout(const UiFrameInput &in) {
 
 namespace {
 
-// Garde un panneau dans la bibliothèque : au-dessus du plancher et de la table, devant les murs.
+// Garde un panneau dans la bibliothèque : au-dessus du plancher, devant les murs.
 Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	Quat q = quatYaw(in.roomYaw);
 	Vec3 p = rotate(conjugate(q), c - in.roomPos);
@@ -267,8 +293,6 @@ Vec3 clampToRoom(const UiFrameInput &in, Vec3 c, float hw, float hh) {
 	p.x = clampf(p.x, -mx, mx);
 	p.z = clampf(p.z, kRoomFrontZ + 0.12f, kRoomBackZ - 0.25f);
 	float lo = hh + 0.04f, hi = kRoomHeight - hh - 0.06f;
-	if (fabsf(p.x) < kTableHalfW + hw && fabsf(p.z - kTableZ) < kTableHalfD + 0.08f)
-		lo = kTableTop + hh + 0.03f;
 	if (hi < lo)
 		hi = lo;
 	p.y = clampf(p.y, lo, hi);
@@ -298,8 +322,6 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	float screenDist = length(in.screenPos - in.anchorPos);
 	if (screenDist < 0.3f)
 		screenDist = 0.3f;
-	const float fullW = in.fullW > 0.05f ? in.fullW : 0.05f;
-
 	// --- 1. Poignée tenue : l'objet suit le rayon du doigt ---
 	if (d->drag != -1) {
 		bool gone = d->drag != Impl::kScreenTarget && !visible[d->drag];
@@ -315,21 +337,23 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenDragging = true;
 				out.screenCenter = c;
 				out.screenZoom = expf(in.stickX * 0.9f * in.dt);
-			} else if (d->drag == kPanelKeyboard) {
+			} else {
 				UiPlacement &pl = placement[d->drag];
 				Vec3 v = c - in.anchorPos;
 				pl.c = clampf(length(v), 0.20f, 6.0f);
 				pl.b = clampf(asinf(clampf(v.y / pl.c, -1.0f, 1.0f)), -1.35f, 1.35f);
 				pl.a = wrapAngle(atan2f(-v.x, -v.z) - in.anchorYaw);
-				pl.scale = clampf(pl.scale * expf(in.stickX * 0.9f * in.dt), 0.0005f, 0.02f);
-			} else {
-				UiPlacement &pl = placement[d->drag];
-				Vec3 l = rotate(screenInv, c - in.basePos) * (1.0f / fullW);
-				pl.a = clampf(l.x, -6.0f, 6.0f);
-				pl.b = clampf(l.y, -6.0f, 6.0f);
-				pl.c = clampf(l.z, -6.0f, 6.0f);
 				pl.scale = clampf(pl.scale * expf(in.stickX * 0.9f * in.dt), 0.0004f, 0.02f);
 			}
+		}
+	}
+	// Coin tenu : relâché ?
+	if (d->resize != -1) {
+		bool gone = d->resize != Impl::kScreenTarget && !visible[d->resize];
+		if (!in.triggerDown || !in.aimValid || gone) {
+			d->resize = -1;
+			out.released = true;
+			out.layoutChanged = true;
 		}
 	}
 
@@ -339,14 +363,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	for (int i = 0; i < kUiPanelCount; i++) {
 		const UiPlacement &pl = placement[i];
 		Quad &q = content[i];
-		float scale;
-		if (i == kPanelKeyboard) {
-			q.c = in.anchorPos + directionFor(in.anchorYaw + pl.a, pl.b) * pl.c;
-			scale = pl.scale;
-		} else {
-			q.c = in.basePos + rotate(in.screenRot, Vec3{pl.a, pl.b, pl.c} * fullW);
-			scale = pl.scale * fullW;
-		}
+		q.c = in.anchorPos + directionFor(in.anchorYaw + pl.a, pl.b) * pl.c;
+		float scale = pl.scale;
 		q.hw = kSources[i].w * scale * 0.5f;
 		q.hh = kSources[i].h * pixelAspect(i) * scale * 0.5f;
 		if (in.roomClamp)
@@ -384,8 +402,43 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		hq.c = in.screenPos + screenU * (top + hq.hh) + screenN * (in.crt ? -0.02f * in.dispW : 0.02f * in.dispW);
 	}
 
+	// Coins : une zone de prise juste à l'extérieur de chaque fenêtre (sur le cadre, pour l'écran).
+	Quad screenQuad;
+	screenQuad.c = in.screenPos;
+	screenQuad.r = screenR;
+	screenQuad.u = screenU;
+	screenQuad.hw = in.dispW * 0.5f;
+	screenQuad.hh = in.dispH * 0.5f;
+	float cornerMargin[kUiPanelCount + 1];
+	for (int i = 0; i < kUiPanelCount; i++)
+		cornerMargin[i] = clampf(0.012f * panelDist[i], 0.004f, 0.012f) + 0.004f;
+	cornerMargin[kUiPanelCount] = 0.095f * in.dispW;
+	auto targetQuad = [&](int target) -> const Quad & { return target == Impl::kScreenTarget ? screenQuad : content[target]; };
+	auto targetMargin = [&](int target) { return cornerMargin[target == Impl::kScreenTarget ? kUiPanelCount : target]; };
+
+	// Coin tenu : la fenêtre grandit ou rapetisse autour de son centre, le coin suit le doigt.
+	if (d->resize != -1) {
+		const Quad &q = targetQuad(d->resize);
+		float m = targetMargin(d->resize), t, x, y;
+		out.dragging = true;
+		if (rayQuad(in.tip, in.dir, q, t, x, y)) {
+			float dd = sqrtf(x * q.hw * x * q.hw + y * q.hh * y * q.hh);
+			float cornerDist = sqrtf((q.hw + m) * (q.hw + m) + (q.hh + m) * (q.hh + m));
+			if (dd > 0.01f && cornerDist > 0.01f && d->resizeRef > 0.05f) {
+				float ratio = clampf(dd / d->resizeRef / cornerDist, 0.90f, 1.10f);
+				if (d->resize == Impl::kScreenTarget) {
+					out.screenResizing = true;
+					out.screenZoom = ratio;
+				} else {
+					UiPlacement &pl = placement[d->resize];
+					pl.scale = clampf(pl.scale * ratio, 0.0004f, 0.02f);
+				}
+			}
+		}
+	}
+
 	// --- 3. Que vise le doigt ? ---
-	enum { kHitNone, kHitHandle, kHitPanel, kHitScreen };
+	enum { kHitNone, kHitHandle, kHitPanel, kHitScreen, kHitCorner };
 	int hitKind = kHitNone, hitIndex = -1;
 	float bestT = 1e9f, hx = 0, hy = 0;
 	// Repli : quand le doigt passe juste à côté d'une fenêtre, on prend la plus proche.
@@ -394,7 +447,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 	bool screenHitOk = false;
 	float screenU01 = 0, screenV01 = 0, screenZ = 0;
 	d->hotKey = -1;
-	if (in.aimValid && d->drag == -1) {
+	int cornerTarget = -1;
+	float cornerSx = 1.0f, cornerSy = 1.0f, cornerK = 1.0f;
+	if (in.aimValid && d->drag == -1 && d->resize == -1) {
 		for (int i = 0; i <= kUiPanelCount; i++) {
 			if (i < kUiPanelCount && !visible[i])
 				continue;
@@ -450,6 +505,36 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				screenHitOk = true;
 			}
 		}
+		// Les coins
+		{
+			float cornerT = 1e9f, cornerBest = 1e9f;
+			for (int i = 0; i <= kUiPanelCount; i++) {
+				if (i < kUiPanelCount && !visible[i])
+					continue;
+				const Quad &q = i < kUiPanelCount ? content[i] : screenQuad;
+				float t, x, y;
+				if (!rayQuad(in.tip, in.dir, q, t, x, y) || (fabsf(x) <= 1.0f && fabsf(y) <= 1.0f))
+					continue; // à l'intérieur, les clics sont pour le jeu
+				float m = cornerMargin[i];
+				float px = fabsf(x) * q.hw - (q.hw + m), py = fabsf(y) * q.hh - (q.hh + m);
+				float e = sqrtf(px * px + py * py);
+				if (e < 0.045f * t && e < cornerBest) {
+					cornerBest = e; cornerT = t;
+					cornerTarget = i < kUiPanelCount ? i : Impl::kScreenTarget;
+					cornerSx = x < 0.0f ? -1.0f : 1.0f;
+					cornerSy = y < 0.0f ? -1.0f : 1.0f;
+					float dd = sqrtf(x * q.hw * x * q.hw + y * q.hh * y * q.hh);
+					cornerK = dd / sqrtf((q.hw + m) * (q.hw + m) + (q.hh + m) * (q.hh + m));
+				}
+			}
+			// Une poignée garde la priorité ; une fenêtre placée devant le coin aussi.
+			if (cornerTarget != -1 && hitKind != kHitHandle && (hitKind == kHitNone || cornerT < bestT - 0.01f)) {
+				hitKind = kHitCorner;
+				bestT = cornerT;
+			} else {
+				cornerTarget = -1;
+			}
+		}
 		if (hitKind == kHitNone && nearKind != kHitNone) {
 			hitKind = nearKind; hitIndex = nearIndex; bestT = nearT; hx = nearX; hy = nearY;
 		}
@@ -492,6 +577,21 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				out.screenCenter = in.screenPos;
 			}
 		}
+	} else if (hitKind == kHitCorner) {
+		const Quad &q = targetQuad(cornerTarget);
+		out.hitValid = true;
+		out.hit = in.tip + in.dir * bestT;
+		out.hitRight = q.r;
+		out.hitUp = q.u;
+		out.hitRadius = 0.012f * bestT;
+		if (in.triggerPressed) {
+			d->resize = cornerTarget;
+			d->resizeSx = cornerSx;
+			d->resizeSy = cornerSy;
+			d->resizeRef = clampf(cornerK, 0.3f, 3.0f);
+			out.grabbed = true;
+			out.dragging = true;
+		}
 	} else if (hitKind == kHitPanel) {
 		const Quad &q = content[hitIndex];
 		out.hitValid = true;
@@ -501,7 +601,7 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		out.hitRadius = 0.010f * bestT;
 		float u = (hx + 1.0f) * 0.5f, v = (1.0f - hy) * 0.5f;
 		if (hitIndex == kPanelKeyboard) {
-			int col = (int)(u * (float)kCols), row = (int)(v * (float)kRows);
+			int col = (int)(u * (float)kCols), row = (int)(v * (float)kKbH / (float)kCellH);
 			for (size_t k = 0; k < d->keys.size(); k++) {
 				const Key &key = d->keys[k];
 				if (key.row == row && col >= key.col && col < key.col + key.span)
@@ -587,6 +687,30 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		h.halfH = hq.hh;
 		h.glow = handleGlow[i];
 		h.alpha = 0.8f + 0.2f * handleGlow[i];
+	}
+	// Le coin visé ou tenu : une équerre de laiton.
+	int shown = d->resize != -1 ? d->resize : cornerTarget;
+	if (shown != -1) {
+		const Quad &q = targetQuad(shown);
+		float m = targetMargin(shown);
+		float sx = d->resize != -1 ? d->resizeSx : cornerSx, sy = d->resize != -1 ? d->resizeSy : cornerSy;
+		float dist = length(q.c - in.anchorPos);
+		float len = clampf(0.075f * dist, 0.03f, 0.26f), th = clampf(0.008f * dist, 0.003f, 0.03f);
+		len = fminf(len, fminf(q.hw, q.hh) + m);
+		// Devant le cadre en relief de l'écran ; à fleur des autres fenêtres.
+		float lift = shown == Impl::kScreenTarget ? 0.07f * in.dispW : 0.003f;
+		Vec3 corner = q.c + q.r * (sx * (q.hw + m)) + q.u * (sy * (q.hh + m)) + cross(q.r, q.u) * lift;
+		for (int k = 0; k < 2 && nh < SceneState::kMaxHandles; k++) {
+			SceneState::Handle &h = scene.handles[nh++];
+			h.visible = true;
+			h.right = q.r;
+			h.up = q.u;
+			h.center = k == 0 ? corner - q.r * (sx * (len * 0.5f - th)) : corner - q.u * (sy * (len * 0.5f - th));
+			h.halfW = k == 0 ? len * 0.5f : th;
+			h.halfH = k == 0 ? th : len * 0.5f;
+			h.glow = d->resize != -1 ? 1.0f : 0.7f;
+			h.alpha = 1.0f;
+		}
 	}
 }
 

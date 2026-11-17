@@ -20,6 +20,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -467,6 +469,12 @@ struct App {
 	int moveDir = 0;       // direction tenue au joystick gauche
 	double imagesCheckedAt = -100.0;
 	bool imageLoaded[4] = {false, false, false, false};
+	std::string imageFile[4];                    // fichier affiché dans chaque emplacement
+	std::map<std::string, long> imageRejected;   // fichiers illisibles (chemin -> taille au moment de l'essai)
+	std::string imageInfo[2];                    // état lisible, affiché sous le clavier
+	// Direction de l'écran choisie par le joueur, par décor (lacet par rapport au regard de départ, tangage)
+	float aimYaw[kEnvCount] = {0, 0, 0}, aimPitch[kEnvCount] = {0, 0, 0};
+	bool aimSaved[kEnvCount] = {false, false, false};
 	double automapSince = 0;
 	// Touches du clavier virtuel à relâcher
 	struct PendingKey {
@@ -1010,7 +1018,7 @@ void loadSettings(App &app, int &environment) {
 	if (!f)
 		return;
 	char line[256];
-	int screenIndex = 0, loadedPanels = 0;
+	int screenIndex = 0, aimIndex = 0, loadedPanels = 0;
 	while (fgets(line, sizeof(line), f)) {
 		char name[32] = {0};
 		int used = 0;
@@ -1036,13 +1044,20 @@ void loadSettings(App &app, int &environment) {
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
-		} else if (!strcmp(name, "fenetre") || !strcmp(name, "clavier")) {
-			// fenetre <nom> x y z échelle (repère de l'écran) ; clavier lacet tangage distance échelle
-			char key[32] = "clavier";
+		} else if (!strcmp(name, "visee")) {
+			float yaw = 0, pitch = 0;
+			if (aimIndex < kEnvCount && sscanf(rest, "%d %f %f", &iv, &yaw, &pitch) == 3 && iv != 0 && fabsf(yaw) <= 3.2f && fabsf(pitch) <= 1.4f) {
+				app.aimYaw[aimIndex] = yaw;
+				app.aimPitch[aimIndex] = pitch;
+				app.aimSaved[aimIndex] = true;
+			}
+			aimIndex++;
+		} else if (!strcmp(name, "panneau")) {
+			// panneau <nom> lacet tangage distance échelle (par rapport à la place du joueur)
+			char key[32] = "";
 			float a = 0, b = 0, c = 0, scale = 0;
-			bool ok = !strcmp(name, "clavier") ? sscanf(rest, "%f %f %f %f", &a, &b, &c, &scale) == 4
-			                                   : sscanf(rest, "%31s %f %f %f %f", key, &a, &b, &c, &scale) == 5;
-			if (ok && scale >= 0.0004f && scale <= 0.02f && fabsf(a) <= 6.0f && fabsf(b) <= 6.0f && fabsf(c) <= 6.0f)
+			bool ok = sscanf(rest, "%31s %f %f %f %f", key, &a, &b, &c, &scale) == 5;
+			if (ok && scale >= 0.0004f && scale <= 0.02f && fabsf(a) <= 3.2f && fabsf(b) <= 1.4f && c >= 0.2f && c <= 6.0f)
 				for (int i = 0; i < lolvr::kUiPanelCount; i++)
 					if (!strcmp(key, lolvr::Ui::panelKey(i))) {
 						app.ui.placement[i] = {a, b, c, scale};
@@ -1067,13 +1082,12 @@ void saveSettings(App &app) {
 		fprintf(f, "ecran %.3f %.3f\n", app.widths[i], app.distances[i]);
 	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
 	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
+	for (int i = 0; i < kEnvCount; i++)
+		fprintf(f, "visee %d %.4f %.4f\n", app.aimSaved[i] ? 1 : 0, app.aimYaw[i], app.aimPitch[i]);
 	if (app.ui.hasLayout())
 		for (int i = 0; i < lolvr::kUiPanelCount; i++) {
 			const lolvr::UiPlacement &pl = app.ui.placement[i];
-			if (i == lolvr::kPanelKeyboard)
-				fprintf(f, "clavier %.4f %.4f %.4f %.5f\n", pl.a, pl.b, pl.c, pl.scale);
-			else
-				fprintf(f, "fenetre %s %.4f %.4f %.4f %.5f\n", lolvr::Ui::panelKey(i), pl.a, pl.b, pl.c, pl.scale);
+			fprintf(f, "panneau %s %.4f %.4f %.4f %.5f\n", lolvr::Ui::panelKey(i), pl.a, pl.b, pl.c, pl.scale);
 		}
 	fclose(f);
 }
@@ -1118,8 +1132,13 @@ void placeScreen(App &app, bool newAnchor) {
 		app.screenYaw = yaw;
 		app.anchorYaw = yaw;
 		app.anchorPos = app.headPos;
-		if (library) {
-			// Un peu au-dessus de la ligne des yeux : la table et les panneaux se logent dessous.
+		if (app.aimSaved[app.environment]) {
+			// Le joueur a déjà choisi où il veut l'écran : on le remet au même endroit par rapport à lui.
+			float y = yaw + app.aimYaw[app.environment], p = app.aimPitch[app.environment];
+			app.anchorDir = rotate(quatYaw(y), {0, 0, -1}) * cosf(p) + Vec3{0, sinf(p), 0};
+			app.screenYaw = y;
+		} else if (library) {
+			// Un peu au-dessus de la ligne des yeux : les fenêtres du jeu se logent dessous.
 			float d = screenDistance(app);
 			app.anchorDir = normalize(flat * d + Vec3{0, 0.05f, 0});
 		} else {
@@ -1162,6 +1181,19 @@ void dragScreen(App &app, Vec3 center, float zoom) {
 	screenWidth(app) = clampf(screenWidth(app) * zoom, lim.wMin, lim.wMax);
 	// L'écran reste tourné vers le joueur.
 	app.screenYaw = atan2f(-dir.x, -dir.z);
+	float rel = app.screenYaw - app.anchorYaw;
+	while (rel > 3.14159265f) rel -= 6.2831853f;
+	while (rel < -3.14159265f) rel += 6.2831853f;
+	app.aimYaw[app.environment] = rel;
+	app.aimPitch[app.environment] = asinf(clampf(dir.y, -1.0f, 1.0f));
+	app.aimSaved[app.environment] = true;
+	placeScreen(app, false);
+}
+
+// Le joueur tient un coin de l'écran : seule sa taille change.
+void resizeScreen(App &app, float zoom) {
+	const Limits &lim = kLimits[app.environment];
+	screenWidth(app) = clampf(screenWidth(app) * zoom, lim.wMin, lim.wMax);
 	placeScreen(app, false);
 }
 
@@ -1350,9 +1382,10 @@ void updateLayout(App &app, double now) {
 	}
 }
 
-// Images du joueur pour le décor. On cherche dans le dossier « decor » (et, par tolérance, dans le
-// dossier du jeu et à la racine) un fichier image dont le nom commence par fenetre, portrait,
-// tableau1 ou tableau2, sans tenir compte des majuscules ni de l'extension exacte.
+// Images du joueur pour le décor, dans le dossier « decor » (et, par tolérance, dans le dossier du
+// jeu et à la racine). Le nom indique l'emplacement (fenetre, portrait, tableau1, tableau2, et
+// quelques mots voisins) ; les images du dossier « decor » qui ne portent aucun de ces noms
+// remplissent les emplacements restés libres, dans l'ordre alphabétique.
 bool loadImageFile(App &app, int slot, const std::string &path) {
 	FILE *f = fopen(path.c_str(), "rb");
 	if (!f)
@@ -1364,7 +1397,7 @@ bool loadImageFile(App &app, int slot, const std::string &path) {
 		data.insert(data.end(), buf, buf + n);
 	fclose(f);
 	int w = 0, h = 0, comp = 0;
-	unsigned char *px = stbi_load_from_memory(data.data(), (int)data.size(), &w, &h, &comp, 4);
+	unsigned char *px = data.empty() ? nullptr : stbi_load_from_memory(data.data(), (int)data.size(), &w, &h, &comp, 4);
 	if (!px) {
 		LOGW("image illisible : %s (%s)", path.c_str(), stbi_failure_reason() ? stbi_failure_reason() : "?");
 		return false;
@@ -1375,25 +1408,131 @@ bool loadImageFile(App &app, int slot, const std::string &path) {
 	return true;
 }
 
+// Texte affichable avec la police du clavier (ASCII seulement).
+std::string plainName(const std::string &name) {
+	std::string out;
+	for (unsigned char ch : name)
+		if (ch >= 32 && ch < 127)
+			out += (char)ch;
+		else if (out.empty() || out.back() != '?')
+			out += '?';
+	return out;
+}
+
 void scanDecorImages(App &app) {
-	static const char *prefixes[4] = {"fen", "portrait", "tableau1", "tableau2"};
+	static const char *const words[4][8] = {
+		{"fen", "window", "chateau", "castle", "gladstone", "paysage", "vue", nullptr},
+		{"portrait", "roi", "king", "richard", nullptr},
+		{"tableau1", "tableau 1", "tableau_1", "tableau-1", nullptr},
+		{"tableau2", "tableau 2", "tableau_2", "tableau-2", nullptr},
+	};
+	static const char *const exts[] = {".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".gif", ".tga", ".webp", ".heic", ".avif"};
 	const std::string dirs[3] = {app.decorDir, app.gameRoot, app.decorDir + "/.."};
-	for (const std::string &dir : dirs) {
+	std::vector<std::string> seen, unreadable; // noms du dossier decor, pour l'information à l'écran
+	bool decorExists = false;
+
+	auto tryLoad = [&](int slot, const std::string &path) {
+		struct stat st;
+		long size = stat(path.c_str(), &st) == 0 ? (long)st.st_size : -1;
+		auto it = app.imageRejected.find(path);
+		if (it != app.imageRejected.end() && it->second == size)
+			return false; // déjà essayé, le fichier n'a pas changé
+		if (loadImageFile(app, slot, path)) {
+			app.imageLoaded[slot] = true;
+			app.imageFile[slot] = path;
+			app.imageRejected.erase(path);
+			return true;
+		}
+		app.imageRejected[path] = size;
+		return false;
+	};
+	auto inUse = [&](const std::string &path) {
+		for (int k = 0; k < 4; k++)
+			if (app.imageLoaded[k] && app.imageFile[k] == path)
+				return true;
+		return false;
+	};
+
+	for (int di = 0; di < 3; di++) {
+		const std::string &dir = dirs[di];
 		DIR *dp = opendir(dir.c_str());
 		if (!dp)
 			continue;
-		while (struct dirent *e = readdir(dp)) {
-			std::string name = e->d_name, lower;
+		if (di == 0)
+			decorExists = true;
+		std::vector<std::string> names;
+		while (struct dirent *e = readdir(dp))
+			if (e->d_name[0] != '.')
+				names.push_back(e->d_name);
+		closedir(dp);
+		std::sort(names.begin(), names.end());
+		std::vector<std::string> unnamed;
+		for (const std::string &name : names) {
+			std::string lower;
 			for (char ch : name)
 				lower += (char)tolower((unsigned char)ch);
-			if (lower.find(".png") == std::string::npos && lower.find(".jpg") == std::string::npos && lower.find(".jpeg") == std::string::npos)
+			bool image = false;
+			for (const char *ext : exts)
+				if (lower.size() > strlen(ext) && lower.find(ext) != std::string::npos)
+					image = true;
+			if (!image)
 				continue;
-			for (int slot = 0; slot < 4; slot++)
-				if (!app.imageLoaded[slot] && lower.compare(0, strlen(prefixes[slot]), prefixes[slot]) == 0)
-					app.imageLoaded[slot] = loadImageFile(app, slot, dir + "/" + name);
+			std::string path = dir + "/" + name;
+			if (di == 0)
+				seen.push_back(name);
+			int slot = -1;
+			for (int k = 0; k < 4 && slot < 0; k++)
+				for (int w = 0; words[k][w]; w++)
+					if (lower.find(words[k][w]) != std::string::npos) {
+						slot = k;
+						break;
+					}
+			if (slot < 0) {
+				if (di == 0)
+					unnamed.push_back(path);
+				continue;
+			}
+			if (!app.imageLoaded[slot] && !inUse(path))
+				tryLoad(slot, path);
 		}
-		closedir(dp);
+		// Dossier decor : les images sans nom reconnu prennent les places libres.
+		for (const std::string &path : unnamed) {
+			if (inUse(path))
+				continue;
+			for (int k = 0; k < 4; k++)
+				if (!app.imageLoaded[k]) {
+					tryLoad(k, path);
+					break;
+				}
+		}
 	}
+	for (const auto &r : app.imageRejected) {
+		size_t slash = r.first.rfind('/');
+		unreadable.push_back(slash == std::string::npos ? r.first : r.first.substr(slash + 1));
+	}
+
+	// Ce que le joueur lit sous le clavier (bouton X).
+	static const char *const labels[4] = {"fenetre", "portrait", "tableau1", "tableau2"};
+	std::string l1 = "Images :";
+	for (int k = 0; k < 4; k++)
+		l1 += std::string(" ") + labels[k] + (app.imageLoaded[k] ? " OUI" : " non") + (k < 3 ? "," : "");
+	std::string l2;
+	if (!decorExists)
+		l2 = "Dossier decor introuvable.";
+	else if (!unreadable.empty()) {
+		l2 = "Illisible :";
+		for (const std::string &u : unreadable)
+			l2 += " " + plainName(u);
+		l2 += " (PNG ou JPEG)";
+	} else if (seen.empty())
+		l2 = "Dossier decor vide : aucune image vue.";
+	else {
+		l2 = "Dossier decor :";
+		for (const std::string &u : seen)
+			l2 += " " + plainName(u);
+	}
+	app.imageInfo[0] = l1;
+	app.imageInfo[1] = l2;
 }
 
 // Envoie au jeu une touche du clavier virtuel (appui bref).
@@ -1445,12 +1584,15 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	in.split = app.split;
 	in.keyboardOpen = app.keyboardOpen;
 	app.ui.setOptions(app.fireOn, app.detached);
+	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
 	if (!app.ui.hasLayout() && app.screenPlaced)
 		app.ui.resetLayout(in);
 	app.ui.update(in, out, app.ss);
 
 	if (out.screenDragging)
 		dragScreen(app, out.screenCenter - Vec3{0, app.viewLift, 0}, out.screenZoom);
+	if (out.screenResizing)
+		resizeScreen(app, out.screenZoom);
 	for (int i = 0; i < out.keyCount; i++)
 		typeKey(app, out.keys[i], out.keyMods[i], now);
 	switch (out.action) {
@@ -1786,8 +1928,7 @@ void renderFrame(App &app, float dt, int savedEnvironment) {
 
 		updateGameEvents(app, now);
 		updateLayout(app, now);
-		if (app.scene.ready() && now - app.imagesCheckedAt > 4.0 &&
-		    !(app.imageLoaded[0] && app.imageLoaded[1] && app.imageLoaded[2] && app.imageLoaded[3])) {
+		if (app.scene.ready() && now - app.imagesCheckedAt > 4.0) {
 			// Images du joueur (facultatives) : on regarde de temps en temps si elles sont arrivées.
 			app.imagesCheckedAt = now;
 			scanDecorImages(app);

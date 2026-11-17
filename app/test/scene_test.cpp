@@ -251,6 +251,7 @@ int main(int argc, char **argv) {
 		{"split_left", kEnvLibrary, kThemeKeep, seat, 42, -10, 1.0f, false, 0, 0, 1},
 		{"split_right", kEnvLibrary, kThemeKeep, seat, -42, -12, 1.0f, false, 0, 0, 1},
 		{"split_pt", kEnvPassthroughFrame, kThemeKeep, seat, 0, -10, 1.25f, true, 0.0f, 0.0f, 1},
+		{"corner", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.25f, true, 0.0f, 0.0f, 3},
 		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
 
@@ -347,7 +348,7 @@ int main(int argc, char **argv) {
 			aimAt(handle + Vec3{0.25f, 0.10f, 0});
 			ui.update(in, o, tmp);
 			UiPlacement after = ui.placement[id];
-			check(o.dragging && after.a > before.a + 0.05f && after.b > before.b + 0.02f, "la fenêtre suit le doigt (vers la droite et le haut)");
+			check(o.dragging && after.a < before.a - 0.03f && after.b > before.b + 0.02f, "la fenêtre suit le doigt (vers la droite et le haut)");
 			in.stickX = 1.0f; in.dt = 0.5f;
 			ui.update(in, o, tmp);
 			check(ui.placement[id].scale > after.scale * 1.2f, "joystick à droite : la fenêtre grandit");
@@ -359,18 +360,76 @@ int main(int argc, char **argv) {
 			ui.update(in, o, tmp);
 			check(o.released && o.layoutChanged && !o.dragging, "poignée lâchée : disposition à mémoriser");
 		}
-		// 7. Butées : une fenêtre poussée sous la table ou sous le plancher est remontée
+		// 7. Butées : une fenêtre poussée sous le plancher ou dans un mur est ramenée dans la pièce
 		{
-			ui.placement[kPanelParty] = {0.0f, (0.30f - 1.30f) / fullW, (2.2f - 0.62f) / fullW, 0.0026f};
+			ui.placement[kPanelParty] = {0.0f, -1.2f, 2.0f, 0.006f};
 			SceneState::Panel p = panel(0);
-			check(p.center.y - p.halfH >= kTableTop, "fenêtre placée dans la table : remontée au-dessus du plateau");
-			ui.placement[kPanelParty] = {0.0f, -3.0f / fullW, 0.0f, 0.0026f};
-			p = panel(0);
 			check(p.center.y - p.halfH > 0.0f, "fenêtre placée sous le plancher : remontée");
-			ui.placement[kPanelSpells].a = -5.0f;
+			ui.placement[kPanelSpells] = {1.5f, 0.0f, 5.0f, 0.006f};
 			p = panel(2);
 			check(p.center.x > -kRoomHalfX + 0.3f, "fenêtre placée dans le mur : ramenée dans la pièce");
 			ui.resetLayout(in);
+		}
+		// 7b. Indépendance : déplacer ou agrandir l'écran ne bouge aucune fenêtre
+		{
+			Vec3 before[5];
+			float size[5];
+			for (int i = 0; i < 5; i++) { SceneState::Panel p = panel(i); before[i] = p.center; size[i] = p.halfW; }
+			UiFrameInput saved = in;
+			in.basePos = in.basePos + Vec3{0.6f, 0.2f, 0.3f};
+			in.screenPos = in.screenPos + Vec3{0.6f, 0.2f, 0.3f};
+			in.fullW *= 1.5f; in.dispW *= 1.5f; in.dispH *= 1.5f;
+			bool same = true;
+			for (int i = 0; i < 5; i++) { SceneState::Panel p = panel(i); same = same && length(p.center - before[i]) < 1e-3f && fabsf(p.halfW - size[i]) < 1e-4f; }
+			check(same, "écran déplacé et agrandi : les fenêtres ne bougent pas");
+			in = saved;
+		}
+		// 7c. Coins : on attrape un coin, on l'écarte, la fenêtre grandit ; pareil pour l'écran
+		{
+			SceneState::Panel inv = panel(1);
+			Vec3 corner = inv.center + inv.right * (inv.halfW + 0.02f) + inv.up * (inv.halfH + 0.02f);
+			float scale0 = ui.placement[kPanelInventory].scale;
+			aimAt(corner);
+			ui.update(in, o, tmp);
+			check(o.hitValid && o.pointerLong && !o.pointerValid, "coin de l'inventaire visé : équerre, pas de clic pour le jeu");
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.grabbed && o.dragging && !o.buttonsToGame, "coin de l'inventaire : pris");
+			in.triggerPressed = false;
+			for (int k = 0; k < 30; k++) {
+				aimAt(inv.center + (corner - inv.center) * 1.5f);
+				ui.update(in, o, tmp);
+			}
+			float grown = ui.placement[kPanelInventory].scale / scale0;
+			check(grown > 1.4f && grown < 1.6f, "coin écarté de moitié : la fenêtre grandit d'autant");
+			SceneState::Panel inv2 = panel(1);
+			check(length(inv2.center - inv.center) < 1e-3f, "… autour de son centre");
+			for (int k = 0; k < 40; k++) {
+				aimAt(inv.center + (corner - inv.center) * 0.7f);
+				ui.update(in, o, tmp);
+			}
+			check(ui.placement[kPanelInventory].scale < scale0 * 0.8f, "coin rapproché : la fenêtre rapetisse");
+			in.triggerDown = false;
+			ui.update(in, o, tmp);
+			check(o.released && o.layoutChanged, "coin lâché : disposition à mémoriser");
+			ui.resetLayout(in);
+			// Écran : coin haut-gauche, sur le cadre
+			Vec3 sc = in.screenPos + Vec3{-(in.dispW * 0.5f + 0.095f * in.dispW), in.dispH * 0.5f + 0.095f * in.dispW, 0};
+			aimAt(sc);
+			ui.update(in, o, tmp);
+			check(o.hitValid && !o.pointerValid, "coin du cadre de l'écran visé");
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			in.triggerPressed = false;
+			aimAt(in.screenPos + (sc - in.screenPos) * 1.2f);
+			ui.update(in, o, tmp);
+			check(o.screenResizing && o.screenZoom > 1.05f && !o.screenDragging, "coin de l'écran écarté : l'écran grandit");
+			in.triggerDown = false;
+			ui.update(in, o, tmp);
+			// Le coin de l'image elle-même reste au jeu
+			aimAt(in.screenPos + Vec3{-(in.dispW * 0.5f - 0.02f), in.dispH * 0.5f - 0.02f, 0});
+			ui.update(in, o, tmp);
+			check(o.pointerValid && o.buttonsToGame, "coin de l'image du jeu : le clic va au jeu");
 		}
 		// 8. Poignée de l'écran
 		{
@@ -393,7 +452,7 @@ int main(int argc, char **argv) {
 			ui.update(in, o, tmp);
 			SceneState::Panel kb = tmp.panels[5];
 			auto keyPos = [&](float col, float row) {
-				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((3.0f - row) / 3.0f * kb.halfH);
+				return kb.center + kb.right * ((col - 5.5f) / 5.5f * kb.halfW) + kb.up * ((1.0f - 2.0f * row * 40.0f / 284.0f) * kb.halfH);
 			};
 			auto press = [&](float col, float row) {
 				aimAt(keyPos(col, row));
@@ -444,7 +503,7 @@ int main(int argc, char **argv) {
 			continue;
 		st.environment = sh.env;
 		st.theme = sh.theme;
-		const bool split = sh.mode >= 1;
+		const bool split = sh.mode == 1 || sh.mode == 3;
 		// Écran : image entière (4:3), ou vue du donjon seule à la même hauteur.
 		float fullW = 2.4f;
 		Vec3 screenPos = {0, 1.30f, -2.2f};
@@ -502,7 +561,10 @@ int main(int argc, char **argv) {
 				in.tip = st.hands[1].pos + rotate(st.hands[1].rot, gloveFingertip(false, 0.0f));
 			}
 			in.dir = rotate(st.hands[1].rot, {0, 0, -1});
+			if (sh.mode == 3) // le doigt vise le coin haut droit du cadre de l'écran
+				in.dir = normalize(in.screenPos + Vec3{in.dispW * 0.595f, in.dispH * 0.5f + in.dispW * 0.095f, 0} - in.tip);
 		}
+		ui.setInfo("Images : fenetre OUI, portrait OUI, tableau1 non, tableau2 non", "Dossier decor : fenetre.png portrait.png");
 		ui.resetLayout(in);
 		UiFrameOutput uo;
 		ui.update(in, uo, st);

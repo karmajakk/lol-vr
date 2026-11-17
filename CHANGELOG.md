@@ -3,6 +3,18 @@
 Format : [versionnage sémantique](https://semver.org/lang/fr/). Tant que le numéro commence par 0,
 le projet est en développement et tout peut encore changer.
 
+## [0.6.0] — Fenêtres indépendantes, coins pour agrandir
+
+- La table et le tabouret sont retirés de la bibliothèque : le milieu de la pièce est libre.
+- Chaque fenêtre (groupe, inventaire, sorts, commandes, boussole) est indépendante de l'écran :
+  déplacer ou agrandir l'écran ne bouge plus les autres. La disposition repart de zéro une fois.
+- Agrandir ou réduire l'écran ou une fenêtre en tirant sur un coin (une équerre de laiton apparaît
+  quand on vise le coin, juste à l'extérieur).
+- L'endroit où l'on a posé l'écran est mémorisé d'une fois à l'autre.
+- Images personnelles : noms plus souples (« chateau », « roi »…, ou n'importe quel nom), et deux
+  lignes sous le clavier (bouton X) qui disent quelles images sont affichées et quels fichiers
+  l'application voit dans le dossier `decor`.
+
 ## [0.5.0] — Interface détachée, corrections
 
 - Plus aucune lumière parasite sur l'image du jeu (les lueurs du décor sont effacées sur l'écran).
