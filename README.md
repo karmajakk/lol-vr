@@ -57,9 +57,9 @@ old one.
 | A | In the dungeon: **attack** with the selected character. Elsewhere: Enter |
 | B | In the dungeon: open the selected character's **magic**. Elsewhere: Escape (skip a cutscene) |
 | Y | Map |
-| **X** | **Keyboard and options**: type a save name, fire sound on/off, detached interface on/off, reset the window layout |
+| **X** | **Right click** where you aim: drink a potion, use an item (same as the grip) |
 | Menu button (left controller) | ScummVM menu: save, load, quit |
-| **Gear on the left wrist** | Look at your left hand and click the gear: language (English / French), classic screen on/off, keyboard, controller mapping |
+| **Gear on the left wrist** | Look at your left hand and click the gear: language (English / French), classic screen on/off, keyboard (to name a save; its top row holds the fire sound, panels and reset layout), controller mapping |
 | Right stick click | Recenter the screen, the room and the windows in front of you |
 | Short left stick click | Change scenery: library → mixed reality with frame → mixed reality with CRT monitor |
 | Left stick click held + right stick | Up/down: screen size; left/right: distance |
@@ -118,7 +118,7 @@ You can add pictures to the headset folder `Android/data/com.karmajakk.lolvr/fil
 
 Six pictures at most. The name can also contain `castle` or `king` (for the window and the
 portrait); a picture with any other name takes the first free spot. The app picks them up a few
-seconds after you copy them, no restart needed. Under the keyboard (X), two lines show which
+seconds after you copy them, no restart needed. Under the keyboard (wrist menu), two lines show which
 pictures are displayed and which files the app sees in the folder.
 
 These pictures don't ship with the app: like the game files, everyone brings their own.

@@ -3,6 +3,11 @@
 Format: [semantic versioning](https://semver.org/). While the number starts with 0, the project
 is in development and anything may still change.
 
+## [0.12.0] — X is a right click
+
+- X now makes a right click where you aim: drink a potion, use an item, like the right mouse
+  button of the original game. The keyboard opens from the wrist menu.
+
 ## [0.11.0] — Classic screen and keyboard in the wrist menu
 
 - The wrist menu gains two lines: "Classic screen" (the whole game image on the big screen, like

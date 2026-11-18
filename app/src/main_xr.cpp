@@ -1818,7 +1818,14 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	} else {
 		if (ui.pointerValid)
 			CoreHost::get().setPointer(ui.gu, ui.gv);
-		CoreHost::get().setMouseButtons(app.triggerDown[hand] && toGame, app.squeezeDown[hand] && toGame);
+		// Clic droit : la poignée de la main qui vise, ou le bouton X (boire une potion, utiliser un objet).
+		bool xRight = getBool(app, app.xAction, -1) && ui.pointerValid;
+		CoreHost::get().setMouseButtons(app.triggerDown[hand] && toGame, (app.squeezeDown[hand] && toGame) || xRight);
+		if (xRight && !app.keyboardButtonDown) {
+			app.clickPulse = 1.0f;
+			pulse(app, hand, 0.28f, 0.018f);
+		}
+		app.keyboardButtonDown = xRight;
 	}
 	if (clicked[hand] && toGame) {
 		app.clickPulse = 1.0f;
@@ -1910,13 +1917,7 @@ void updateInput(App &app, XrTime time, float dt, double now) {
 	setKey(app.kEnter, aDown && !combat, RETROK_RETURN);
 	setKey(app.kEsc, bDown && !combat, RETROK_ESCAPE);
 	setKey(app.kMap, getBool(app, app.yAction, -1), RETROK_m);
-	// X = clavier et options (pour nommer une sauvegarde, entre autres), bouton menu = menu ScummVM.
-	bool keyboardButton = getBool(app, app.xAction, -1);
-	if (keyboardButton && !app.keyboardButtonDown) {
-		app.keyboardOpen = !app.keyboardOpen;
-		pulse(app, kLeft, 0.3f, 0.03f);
-	}
-	app.keyboardButtonDown = keyboardButton;
+	// X = clic droit (voir plus haut) ; le clavier s'ouvre depuis le menu du poignet. Bouton menu = menu ScummVM.
 	CoreHost::get().setSpecialButtons(false, getBool(app, app.menuAction, -1));
 	releaseTypedKeys(app, now, false);
 }

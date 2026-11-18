@@ -10,7 +10,7 @@ Look at your left hand, click the gear, then "Language".
 Look at your left hand, click the gear, then "Controller mapping". See also [Controls](Controls.md).
 
 **My pictures (window, portrait) don't show up.**
-Open the keyboard (X button) and read the two lines under the keys: they tell which pictures are displayed and which files the app sees. "Folder 'decor' is empty" means the files are not in `Android/data/com.karmajakk.lolvr/files/decor`; "Unreadable" means the format isn't supported (use PNG or JPEG, not WebP or HEIC). See [Scenery and pictures](Scenery-and-pictures.md).
+Open the keyboard (wrist menu) and read the two lines under the keys: they tell which pictures are displayed and which files the app sees. "Folder 'decor' is empty" means the files are not in `Android/data/com.karmajakk.lolvr/files/decor`; "Unreadable" means the format isn't supported (use PNG or JPEG, not WebP or HEIC). See [Scenery and pictures](Scenery-and-pictures.md).
 
 **The windows or the screen are badly placed.**
 Click the right stick to recenter, or X → "Reset layout".

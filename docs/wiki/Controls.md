@@ -10,7 +10,7 @@
 | A | In the dungeon: **attack** with the selected character. Elsewhere: Enter |
 | B | In the dungeon: open the selected character's **magic**. Elsewhere: Escape (skip a cutscene) |
 | Y | Map |
-| **X** | **Keyboard and options**: type a save name, fire sound, panels, reset layout |
+| **X** | **Right click** where you aim: drink a potion, use an item (same as the grip) |
 | Menu button (left controller) | ScummVM menu: save, load, quit |
 | **Gear on the left wrist** | Language, classic screen, keyboard, controller mapping |
 | Right stick click | Recenter the screen, the room and the windows in front of you |
@@ -23,15 +23,15 @@ Look at your left hand: a small brass gear appears above it. At first launch, a 
 
 - **Language**: switches between English and French.
 - **Classic screen**: on, the whole game image stays on the big screen, like the original game; off, the party, inventory and compass windows float on their own.
-- **Show keyboard / Hide keyboard**: the virtual keyboard, to type a save name (X does the same).
+- **Show keyboard / Hide keyboard**: the virtual keyboard, to type a save name.
 - **Controller mapping**: shows a panel summing up every button. Click the panel to close it.
 - **Close**.
 
 ## Button combat
 
-In the dungeon, one character is "selected": they are framed in yellow in the party window. **A** makes them attack, **B** opens their spell list (then aim at the spell). Flick the right stick up or down to pick the next or previous character. In menus, cutscenes, the map and a character sheet, A and B go back to Enter and Escape; the Escape key is also on the keyboard (X).
+In the dungeon, one character is "selected": they are framed in yellow in the party window. **A** makes them attack, **B** opens their spell list (then aim at the spell). Flick the right stick up or down to pick the next or previous character. In menus, cutscenes, the map and a character sheet, A and B go back to Enter and Escape; the Escape key is also on the keyboard (wrist menu).
 
-To **use an item** (drink a potion, for example): click the item in the inventory, then click a character's portrait.
+To **drink a potion** or use an item: aim at it in the inventory and press **X** (a right click, like in the original game). The grip of the aiming hand does the same.
 
 ## Moving the screen and windows
 
@@ -48,7 +48,7 @@ Positions are remembered between sessions.
 
 Aim at a corner of the screen or a window, just outside (on the frame, for the screen): a brass bracket appears. Squeeze the trigger, then move your hand away to enlarge or closer to shrink. The window resizes around its center.
 
-## Keyboard (X button)
+## Keyboard (wrist menu)
 
 A virtual keyboard opens, handy to name a save. Its top row holds the options: Fire (fireplace sound), Panels (detached interface or whole image), Reset layout, Close. Below the keys, two lines tell which of your pictures are displayed.
 
