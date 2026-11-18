@@ -3,6 +3,15 @@
 Format: [semantic versioning](https://semver.org/). While the number starts with 0, the project
 is in development and anything may still change.
 
+## [0.10.1] — The big screen goes all the way down
+
+- Fixed: the larger the main screen, the higher it stayed above the floor, as if an invisible
+  barrier rose with its size. The screen now goes down until its frame almost touches the floor,
+  whatever its size.
+- The screen can be aimed lower when you drag it.
+- When the full image replaces the dungeon view (menus, scenes), the screen moves up if needed so
+  it never sinks into the floor.
+
 ## [0.10.0] — Wrist menu, English, no more table
 
 - The reading table and its stool are gone from the library: the middle of the room is free.

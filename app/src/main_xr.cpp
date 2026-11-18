@@ -1182,9 +1182,23 @@ void placeScreen(App &app, bool newAnchor) {
 	}
 	Vec3 pos = app.anchorPos + app.anchorDir * screenDistance(app);
 	if (library) {
-		// Sans jamais toucher le plancher ni le plafond.
-		float half = 0.375f * screenWidth(app) * 1.2f + 0.12f;
-		pos.y = clampf(pos.y, app.floorY + half, fmaxf(app.floorY + half, app.floorY + lolvr::kRoomHeight - half));
+		// Sans jamais toucher le plancher ni le plafond : on mesure le cadre réellement affiché
+		// (la vue du donjon seule est moins haute et remontée), moulure dorée comprise.
+		float w = screenWidth(app), h, lift, dw;
+		if (app.split) {
+			h = w * lolvr::kSplitViewHeight;
+			lift = w * lolvr::kSplitViewLift;
+			dw = h * 176.0f / (120.0f * 1.2f);
+		} else {
+			h = w * 0.75f;
+			lift = 0.0f;
+			dw = w;
+		}
+		float rim = 0.095f * dw;
+		float below = h * 0.5f - lift + rim + 0.03f; // du centre au bas du cadre, plus un doigt d'air
+		float above = h * 0.5f + lift + rim + 0.15f; // du centre au haut du cadre et à sa poignée
+		float lo = app.floorY + below, hi = app.floorY + lolvr::kRoomHeight - above;
+		pos.y = clampf(pos.y, lo, fmaxf(lo, hi));
 	}
 	app.screenPos = pos;
 	app.screenPlaced = true;
@@ -1204,7 +1218,7 @@ void dragScreen(App &app, Vec3 center, float zoom) {
 		while (yaw > 3.14159265f) yaw -= 6.2831853f;
 		while (yaw < -3.14159265f) yaw += 6.2831853f;
 		yaw = clampf(yaw, -0.45f, 0.45f);
-		float pitch = clampf(asinf(clampf(dir.y, -1.0f, 1.0f)), -0.35f, 0.45f);
+		float pitch = clampf(asinf(clampf(dir.y, -1.0f, 1.0f)), -0.70f, 0.45f);
 		Vec3 flat = rotate(quatYaw(app.anchorYaw + yaw), {0, 0, -1});
 		dir = flat * cosf(pitch) + Vec3{0, sinf(pitch), 0};
 	}
@@ -1399,10 +1413,18 @@ void updateLayout(App &app, double now) {
 	const float kViewX = 112, kViewY = 0, kViewW = 176, kViewH = 120; // vue du donjon dans l'image 320x200
 	// On attend que l'état soit stable un court instant, pour ne pas clignoter pendant une transition.
 	bool allowed = app.detached && app.environment != lolvr::kEnvPassthroughCrt;
-	if (!allowed)
+	if (!allowed) {
+		if (app.split && app.screenPlaced) {
+			app.split = false;
+			placeScreen(app, false);
+		}
 		app.split = false;
-	else if (app.splitWanted != app.split && now - app.splitWantedSince > (app.splitWanted ? 0.35 : 0.05))
+	} else if (app.splitWanted != app.split && now - app.splitWantedSince > (app.splitWanted ? 0.35 : 0.05)) {
 		app.split = app.splitWanted;
+		// L'image entière est plus haute que la vue seule : on la garde au-dessus du plancher.
+		if (app.screenPlaced)
+			placeScreen(app, false);
+	}
 	float w = screenWidth(app);
 	if (app.split) {
 		// La vue seule est un peu moins haute que l'image entière et remontée, pour laisser la place
