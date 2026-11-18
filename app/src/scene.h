@@ -61,7 +61,7 @@ struct SceneState {
 		bool hotOutline = false;              // la zone mise en valeur n'est qu'encadrée (pas de voile)
 		bool blank = false;                   // fenêtre éteinte : du noir à la place de l'image
 	};
-	static const int kMaxPanels = 10;
+	static const int kMaxPanels = 12;
 	Panel panels[kMaxPanels];
 
 	// Poignées en laiton : on les attrape pour déplacer un panneau ou l'écran.

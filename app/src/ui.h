@@ -30,7 +30,7 @@ struct UiPlacement {
 const float kSplitViewHeight = 0.54f;
 const float kSplitViewLift = 0.16f;
 
-enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionResetLayout, kUiActionCloseKeyboard, kUiActionToggleHelp, kUiActionCloseHelp, kUiActionToggleLanguage };
+enum UiAction { kUiActionNone = 0, kUiActionToggleFire, kUiActionToggleDetach, kUiActionResetLayout, kUiActionCloseKeyboard, kUiActionToggleHelp, kUiActionCloseHelp, kUiActionToggleLanguage, kUiActionToggleKeyboard };
 
 enum UiLanguage { kLangEnglish = 0, kLangFrench = 1 };
 
@@ -73,6 +73,10 @@ struct UiFrameInput {
 	float partyMark[4] = {0, 0, 0, 0};
 	// La fiche d'un personnage occupe l'écran : la fenêtre de la boussole est éteinte.
 	bool compassBlank = false;
+	// Premier lancement : un petit mot invite à regarder l'engrenage du poignet, qui bat doucement,
+	// tant que le menu n'a jamais été ouvert.
+	bool gearHint = false;
+	double time = 0.0;
 
 };
 
@@ -98,6 +102,7 @@ struct UiFrameOutput {
 	int keyCount = 0;
 	unsigned keys[4] = {0, 0, 0, 0}, keyMods[4] = {0, 0, 0, 0};
 	int action = kUiActionNone;
+	bool gearMenuOpened = false; // le joueur a ouvert le menu du poignet (l'invitation peut disparaître)
 	bool clicked = false;
 };
 

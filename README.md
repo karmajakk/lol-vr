@@ -59,7 +59,7 @@ old one.
 | Y | Map |
 | **X** | **Keyboard and options**: type a save name, fire sound on/off, detached interface on/off, reset the window layout |
 | Menu button (left controller) | ScummVM menu: save, load, quit |
-| **Gear on the left wrist** | Look at your left hand and click the gear: language (English / French) and the controller mapping |
+| **Gear on the left wrist** | Look at your left hand and click the gear: language (English / French), classic screen on/off, keyboard, controller mapping |
 | Right stick click | Recenter the screen, the room and the windows in front of you |
 | Short left stick click | Change scenery: library → mixed reality with frame → mixed reality with CRT monitor |
 | Left stick click held + right stick | Up/down: screen size; left/right: distance |
@@ -90,7 +90,7 @@ During cutscenes, menus, the map and full-width scenes, the whole image comes ba
 A character sheet is shown in full on the screen (which widens to the right); the windows stay
 where they are and the compass window goes dark.
 
-The "Panels" button on the keyboard (X) shows the whole image all the time, and "Reset layout"
+"Classic screen" in the wrist menu (or "Panels" on the keyboard) shows the whole image all the time, and "Reset layout"
 arranges the windows around the screen, wherever it is.
 
 ## Scenery

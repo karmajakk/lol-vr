@@ -471,6 +471,8 @@ struct App {
 	double synthClickUntil = 0;   // clic envoyé au jeu à la place du pointeur (bouton de magie)
 	float synthU = 0, synthV = 0;
 	bool keyboardOpen = false, keyboardButtonDown = false;
+	bool gearKnown = false;      // le joueur a déjà ouvert le menu du poignet (plus d'invitation)
+	double gearNudgeAt = 0;      // prochaine petite vibration de la main gauche pour l'invitation
 	bool fireOn = false;
 	bool layoutLoaded = false;
 	// Atlas : copie de la dernière carte consultée
@@ -1069,6 +1071,9 @@ void loadSettings(App &app, int &environment) {
 		} else if (!strcmp(name, "langue")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.language = iv == 1 ? lolvr::kLangFrench : lolvr::kLangEnglish;
+		} else if (!strcmp(name, "engrenage")) {
+			if (sscanf(rest, "%d", &iv) == 1)
+				app.gearKnown = iv != 0;
 		} else if (!strcmp(name, "panneaux")) {
 			if (sscanf(rest, "%d", &iv) == 1)
 				app.detached = iv != 0;
@@ -1114,6 +1119,7 @@ void saveSettings(App &app) {
 	fprintf(f, "feu %d\n", app.fireOn ? 1 : 0);
 	fprintf(f, "panneaux %d\n", app.detached ? 1 : 0);
 	fprintf(f, "langue %d\n", app.language);
+	fprintf(f, "engrenage %d\n", app.gearKnown ? 1 : 0);
 	for (int i = 0; i < kEnvCount; i++)
 		fprintf(f, "visee %d %.4f %.4f\n", app.aimSaved[i] ? 1 : 0, app.aimYaw[i], app.aimPitch[i]);
 	if (app.ui.hasLayout())
@@ -1680,6 +1686,8 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	in.headDir = rotate(app.headRot, {0, 0, -1});
 	in.helpOpen = app.helpOpen;
 	in.compassBlank = app.split && app.charSheet;
+	in.gearHint = !app.gearKnown;
+	in.time = now;
 	app.ui.setInfo(app.imageInfo[0], app.imageInfo[1]);
 	if (!app.ui.hasLayout() && app.screenPlaced)
 		app.ui.resetLayout(in);
@@ -1718,8 +1726,21 @@ void updateUi(App &app, float dt, double now, bool pointer, bool triggerPressed,
 	case lolvr::kUiActionCloseKeyboard:
 		app.keyboardOpen = false;
 		break;
+	case lolvr::kUiActionToggleKeyboard:
+		app.keyboardOpen = !app.keyboardOpen;
+		break;
 	default:
 		break;
+	}
+	if (out.gearMenuOpened && !app.gearKnown) {
+		app.gearKnown = true;
+		app.settingsDirty = true;
+	}
+	// Invitation du premier lancement : une petite vibration de la main gauche de temps en temps.
+	if (!app.gearKnown && app.screenPlaced && now >= app.gearNudgeAt) {
+		if (app.gearNudgeAt > 0)
+			pulse(app, kLeft, 0.35f, 0.06f);
+		app.gearNudgeAt = now + 8.0;
 	}
 	if (out.layoutChanged)
 		app.settingsDirty = true;

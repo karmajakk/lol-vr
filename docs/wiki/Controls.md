@@ -12,16 +12,18 @@
 | Y | Map |
 | **X** | **Keyboard and options**: type a save name, fire sound, panels, reset layout |
 | Menu button (left controller) | ScummVM menu: save, load, quit |
-| **Gear on the left wrist** | Language and controller mapping |
+| **Gear on the left wrist** | Language, classic screen, keyboard, controller mapping |
 | Right stick click | Recenter the screen, the room and the windows in front of you |
 | Short left stick click | Change scenery (library → mixed reality with frame → mixed reality with CRT monitor) |
 | Left stick click held + right stick | Up/down: screen size; left/right: distance |
 
 ## Wrist menu
 
-Look at your left hand: a small brass gear appears above it. Click it with the right hand's trigger to open a small menu:
+Look at your left hand: a small brass gear appears above it. At first launch, a note under your gaze and a light buzz in the left controller point you to it, until you open the menu once. Click it with the right hand's trigger to open a small menu:
 
 - **Language**: switches between English and French.
+- **Classic screen**: on, the whole game image stays on the big screen, like the original game; off, the party, inventory and compass windows float on their own.
+- **Show keyboard / Hide keyboard**: the virtual keyboard, to type a save name (X does the same).
 - **Controller mapping**: shows a panel summing up every button. Click the panel to close it.
 - **Close**.
 

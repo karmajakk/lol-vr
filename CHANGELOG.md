@@ -3,6 +3,15 @@
 Format: [semantic versioning](https://semver.org/). While the number starts with 0, the project
 is in development and anything may still change.
 
+## [0.11.0] — Classic screen and keyboard in the wrist menu
+
+- The wrist menu gains two lines: "Classic screen" (the whole game image on the big screen, like
+  the original, instead of floating windows) and "Show keyboard" / "Hide keyboard". X still opens
+  the keyboard too.
+- First launch: a small note under your gaze says to look at your left hand, the gear beats gently
+  and the left controller buzzes lightly every few seconds. All of it stops for good once you have
+  opened the menu.
+
 ## [0.10.1] — The big screen goes all the way down
 
 - Fixed: the larger the main screen, the higher it stayed above the floor, as if an invisible

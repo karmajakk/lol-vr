@@ -254,6 +254,7 @@ int main(int argc, char **argv) {
 		{"corner", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.25f, true, 0.0f, 0.0f, 3},
 		{"help", kEnvLibrary, kThemeKeep, seat, 0, 2, 1.0f, false, 0.0f, 0.0f, 4},
 		{"wrist", kEnvLibrary, kThemeKeep, seat, 10, -12, 0.6f, true, 0.0f, 0.0f, 5},
+		{"hint", kEnvLibrary, kThemeKeep, seat, 0, -10, 1.0f, false, 0.0f, 0.0f, 6},
 		{"keyboard", kEnvLibrary, kThemeKeep, seat, 0, -26, 0.85f, true, 0.0f, 0.0f, 2},
 	};
 
@@ -507,17 +508,25 @@ int main(int argc, char **argv) {
 			ui.update(in, o, tmp);
 			int shown = 0;
 			for (int i = 0; i < SceneState::kMaxPanels; i++) shown += tmp.panels[i].visible ? 1 : 0;
+			// Premier lancement : une invitation sous le regard, tant que le menu n'a jamais été ouvert
+			in.gearHint = true;
+			ui.update(in, o, tmp);
+			int withHint = 0;
+			for (int i = 0; i < SceneState::kMaxPanels; i++) withHint += tmp.panels[i].visible ? 1 : 0;
+			check(withHint == shown + 1, "premier lancement : l'invitation à regarder la main gauche est affichée");
 			in.headDir = normalize(in.wristPos + Vec3{0, 0.075f, 0.06f} - in.headPos);
 			ui.update(in, o, tmp);
 			int shown2 = 0, gear = -1;
 			for (int i = 0; i < SceneState::kMaxPanels; i++)
 				if (tmp.panels[i].visible) { shown2++; gear = i; }
-			check(shown2 == shown + 1, "poignet : l'engrenage apparaît quand on regarde la main gauche");
+			check(shown2 == shown + 1, "poignet : l'engrenage apparaît (et l'invitation s'efface) quand on regarde la main gauche");
 			Vec3 gearPos = tmp.panels[gear].center;
 			in.tip = {0.25f, 0.95f, -0.30f};
 			aimAt(gearPos);
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
+			check(o.gearMenuOpened, "poignet : ouvrir le menu est signalé (l'invitation ne reviendra plus)");
+			in.gearHint = false;
 			in.triggerDown = in.triggerPressed = false;
 			ui.update(in, o, tmp);
 			int shown3 = 0, menu = -1;
@@ -525,7 +534,7 @@ int main(int argc, char **argv) {
 				if (tmp.panels[i].visible) { shown3++; menu = i; }
 			check(o.action == kUiActionNone && shown3 == shown2 + 1, "poignet : un clic sur l'engrenage ouvre le menu");
 			SceneState::Panel m = tmp.panels[menu];
-			auto row = [&](int r) { return m.center + m.up * ((1.0f - (r + 0.5f) / 2.0f) * m.halfH); };
+			auto row = [&](int r) { return m.center + m.up * ((1.0f - (r + 0.5f) / 3.0f) * m.halfH); };
 			aimAt(row(1));
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
@@ -535,7 +544,26 @@ int main(int argc, char **argv) {
 			aimAt(row(2));
 			in.triggerDown = in.triggerPressed = true;
 			ui.update(in, o, tmp);
-			check(o.action == kUiActionToggleHelp, "menu : deuxième ligne, les manettes");
+			check(o.action == kUiActionToggleDetach, "menu : deuxième ligne, l'écran classique");
+			in.triggerDown = in.triggerPressed = false;
+			ui.update(in, o, tmp);
+			aimAt(row(3));
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.action == kUiActionToggleKeyboard, "menu : troisième ligne, le clavier (et le menu se ferme)");
+			in.triggerDown = in.triggerPressed = false;
+			ui.update(in, o, tmp);
+			// Rouvrir le menu pour la ligne des manettes
+			in.headDir = normalize(in.wristPos + Vec3{0, 0.075f, 0.06f} - in.headPos);
+			aimAt(gearPos);
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			in.triggerDown = in.triggerPressed = false;
+			ui.update(in, o, tmp);
+			aimAt(row(4));
+			in.triggerDown = in.triggerPressed = true;
+			ui.update(in, o, tmp);
+			check(o.action == kUiActionToggleHelp, "menu : quatrième ligne, les manettes");
 			in.triggerDown = in.triggerPressed = false;
 			in.wristValid = false;
 			in.keyboardOpen = false;
@@ -569,7 +597,7 @@ int main(int argc, char **argv) {
 			continue;
 		st.environment = sh.env;
 		st.theme = sh.theme;
-		const bool split = sh.mode == 1 || sh.mode >= 3;
+		const bool split = sh.mode == 1 || (sh.mode >= 3 && sh.mode != 6);
 		// Écran : image entière (4:3), ou vue du donjon seule à la même hauteur.
 		float fullW = 2.4f;
 		Vec3 screenPos = {0, 1.30f, -2.2f};
@@ -641,6 +669,11 @@ int main(int argc, char **argv) {
 			in.wristRot = st.hands[0].rot;
 			in.headPos = sh.eye;
 			in.headDir = normalize(in.wristPos - in.headPos);
+		}
+		in.gearHint = sh.mode == 6;
+		if (sh.mode == 6) {
+			in.headPos = sh.eye;
+			in.headDir = {0, 0, -1};
 		}
 		if (sh.mode == 1) {
 			in.partyMark[0] = 149; in.partyMark[1] = 143; in.partyMark[2] = 66; in.partyMark[3] = 34;

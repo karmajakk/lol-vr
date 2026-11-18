@@ -31,7 +31,7 @@ struct Source {
 // Clavier : grille de 11 colonnes sur 6 rangées.
 const int kCellW = 46, kCellH = 40, kCols = 11, kRows = 6;
 // Menu du poignet : engrenage et petit menu
-const int kGearSize = 64, kMenuW = 288, kMenuRowH = 44, kMenuRows = 4, kMenuH = kMenuRowH * kMenuRows;
+const int kGearSize = 64, kHintW = 336, kHintH = 76, kMenuW = 288, kMenuRowH = 44, kMenuRows = 6, kMenuH = kMenuRowH * kMenuRows;
 // Panneau d'aide
 const int kHelpW = 584, kHelpH = 470;
 const int kInfoH = 44; // deux lignes d'information sous les touches
@@ -135,8 +135,13 @@ struct Ui::Impl {
 
 	// Poignée tenue : -1 aucune, 0..kUiPanelCount-1 un panneau, kScreenTarget l'écran.
 	static const int kScreenTarget = 100;
-	GLuint helpTex = 0, gearTex = 0, menuTex = 0;
-	bool helpDirty = true, menuDirty = true;
+	GLuint helpTex = 0, gearTex = 0, menuTex = 0, hintTex = 0;
+	bool helpDirty = true, menuDirty = true, hintDirty = true;
+	bool menuKeyboard = false; // état montré dans le menu
+	void renderHint();
+	// Invitation du premier lancement : elle suit doucement le regard.
+	bool hintPlaced = false;
+	Vec3 hintPos = {0, 0, 0};
 	void renderHelp();
 	void renderGear();
 	void renderMenu();
@@ -286,7 +291,7 @@ void Ui::Impl::renderHelp() {
 		"Right stick (sideways) ... turn",
 		"Y : map        X : keyboard and options",
 		"Menu button (left) ....... save, load, quit",
-		"Gear on the left wrist ... language, this help",
+		"Gear on the left wrist ... settings, keyboard, help",
 		"",
 		"#Combat, in the dungeon",
 		"A ........................ attack with the framed character",
@@ -316,7 +321,7 @@ void Ui::Impl::renderHelp() {
 		"Joystick droit (côtés) ... tourner",
 		"Y : carte      X : clavier et options",
 		"Bouton menu (gauche) ..... sauvegarder, charger, quitter",
-		"Engrenage au poignet gauche : langue, cette aide",
+		"Engrenage au poignet gauche : réglages, clavier, aide",
 		"",
 		"#Combat, dans le donjon",
 		"A ........................ attaquer avec le personnage encadré",
@@ -383,6 +388,8 @@ void Ui::Impl::renderMenu() {
 	const std::string rows[kMenuRows] = {
 		"Lands of Lore VR",
 		latin1(fr ? "Langue : Français" : "Language: English"),
+		latin1(detached ? (fr ? "Écran classique : non" : "Classic screen: off") : (fr ? "Écran classique : oui" : "Classic screen: on")),
+		latin1(menuKeyboard ? (fr ? "Cacher le clavier" : "Hide keyboard") : (fr ? "Afficher le clavier" : "Show keyboard")),
 		latin1(fr ? "Manettes et boutons" : "Controller mapping"),
 		latin1(fr ? "Fermer" : "Close"),
 	};
@@ -401,6 +408,31 @@ void Ui::Impl::renderMenu() {
 	}
 	upload(menuTex, cv.px, kMenuW, kMenuH);
 	menuDirty = false;
+}
+
+// Invitation du premier lancement : un engrenage et deux lignes.
+void Ui::Impl::renderHint() {
+	const bool fr = language == kLangFrench;
+	Canvas cv{kHintW, kHintH, std::vector<uint8_t>((size_t)kHintW * kHintH * 4)};
+	cv.rect(0, 0, kHintW, kHintH, 140, 108, 72);
+	cv.rect(3, 3, kHintW - 3, kHintH - 3, 34, 24, 16);
+	// Petit engrenage à gauche
+	for (int y = 0; y < kHintH; y++)
+		for (int x = 0; x < 72; x++) {
+			float dx = (float)x + 0.5f - 38.0f, dy = (float)y + 0.5f - kHintH * 0.5f;
+			float r = sqrtf(dx * dx + dy * dy), a = atan2f(dy, dx);
+			float outer = cosf(a * 8.0f) > 0.0f ? 24.0f : 18.0f;
+			if (r < outer && r > 8.0f) {
+				float shade = 0.75f + 0.25f * (-dy / (kHintH * 0.5f));
+				cv.rect(x, y, x + 1, y + 1, (uint8_t)(230 * shade), (uint8_t)(170 * shade), (uint8_t)(70 * shade));
+			}
+		}
+	const std::string l1 = latin1(fr ? "Regarde ta main gauche :" : "Look at your left hand:");
+	const std::string l2 = latin1(fr ? "l'engrenage ouvre les réglages." : "the gear opens the settings.");
+	cv.text(l1, 76, 18, 1, 255, 205, 110);
+	cv.text(l2, 76, 42, 1, 250, 236, 200);
+	upload(hintTex, cv.px, kHintW, kHintH);
+	hintDirty = false;
 }
 
 Ui::Ui() : d(new Impl()) {
@@ -427,12 +459,15 @@ void Ui::setLanguage(int language) {
 		d->kbDirty = true;
 		d->helpDirty = true;
 		d->menuDirty = true;
+		d->hintDirty = true;
 	}
 }
 
 void Ui::setOptions(bool fireOn, bool detached) {
 	if (fireOn != d->fireOn || detached != d->detached)
 		d->kbDirty = true;
+	if (detached != d->detached)
+		d->menuDirty = true;
 	d->fireOn = fireOn;
 	d->detached = detached;
 }
@@ -521,8 +556,14 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 		d->renderHelp();
 	if (!d->gearTex)
 		d->renderGear();
+	if (in.keyboardOpen != d->menuKeyboard) {
+		d->menuKeyboard = in.keyboardOpen;
+		d->menuDirty = true;
+	}
 	if (d->menuDirty || !d->menuTex)
 		d->renderMenu();
+	if (in.gearHint && (d->hintDirty || !d->hintTex))
+		d->renderHint();
 	d->pressFlash -= in.dt;
 
 	// Tant que la disposition n'est pas établie (écran pas encore placé), aucun panneau.
@@ -650,6 +691,9 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			gearQ.r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
 			gearQ.u = cross(n, gearQ.r);
 			gearQ.hw = gearQ.hh = 0.026f;
+			// Tant que le joueur ne l'a jamais ouvert, l'engrenage bat doucement pour se faire remarquer.
+			if (in.gearHint && !d->menuOpen)
+				gearQ.hw = gearQ.hh = 0.026f * (1.15f + 0.15f * sinf((float)in.time * 6.0f));
 		}
 	}
 	const float kMenuScale = 0.0009f;
@@ -873,6 +917,8 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 			if (in.triggerPressed) {
 				// Le menu s'ouvre au-dessus de la main et reste là.
 				d->menuOpen = !d->menuOpen;
+				if (d->menuOpen)
+					out.gearMenuOpened = true;
 				d->menuPos = gearQ.c + gearQ.u * (kMenuH * kMenuScale * 0.5f + 0.05f);
 				d->menuRight = gearQ.r;
 				d->menuUp = gearQ.u;
@@ -887,6 +933,11 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				if (row == 1) {
 					out.action = kUiActionToggleLanguage;
 				} else if (row == 2) {
+					out.action = kUiActionToggleDetach;
+				} else if (row == 3) {
+					out.action = kUiActionToggleKeyboard;
+					d->menuOpen = false;
+				} else if (row == 4) {
 					out.action = kUiActionToggleHelp;
 					d->menuOpen = false;
 				} else {
@@ -993,6 +1044,37 @@ void Ui::update(const UiFrameInput &in, UiFrameOutput &out, SceneState &scene) {
 				}
 			}
 		}
+	}
+	// Invitation du premier lancement : un peu sous le regard, à portée de lecture, elle suit la tête
+	// sans à-coups. Elle s'efface quand on regarde sa main (l'engrenage prend le relais).
+	if (in.gearHint && placed && !d->menuOpen && !gearVisible && d->hintTex && np < SceneState::kMaxPanels) {
+		Vec3 flat = {in.headDir.x, 0.0f, in.headDir.z};
+		float fl = length(flat);
+		flat = fl > 1e-3f ? flat * (1.0f / fl) : Vec3{0, 0, -1};
+		Vec3 target = in.headPos + flat * 0.80f + Vec3{0, -0.36f, 0};
+		if (!d->hintPlaced) {
+			d->hintPos = target;
+			d->hintPlaced = true;
+		}
+		d->hintPos = d->hintPos + (target - d->hintPos) * clampf(in.dt * 2.0f, 0.0f, 1.0f);
+		Vec3 n = in.headPos - d->hintPos;
+		float nl = length(n);
+		n = nl > 1e-3f ? n * (1.0f / nl) : Vec3{0, 0, 1};
+		Vec3 r = cross({0, 1, 0}, n);
+		float rl = length(r);
+		r = rl > 1e-4f ? r * (1.0f / rl) : Vec3{1, 0, 0};
+		SceneState::Panel &p = scene.panels[np++];
+		p = SceneState::Panel();
+		p.visible = true;
+		p.center = d->hintPos;
+		p.right = r;
+		p.up = cross(n, r);
+		p.halfW = 0.21f;
+		p.halfH = 0.21f * (float)kHintH / (float)kHintW;
+		p.border = 0.003f;
+		p.texture = d->hintTex;
+		p.texW = kHintW;
+		p.texH = kHintH;
 	}
 	for (int w = 0; w < 2; w++) {
 		if ((w == 0 ? !gearVisible : !d->menuOpen) || np >= SceneState::kMaxPanels)
