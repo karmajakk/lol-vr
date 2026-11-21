@@ -154,6 +154,16 @@ Lands of Lore's formats and rules that the VR mods rely on. Thanks for their har
 dungeon version, [lol-vr-3d](https://github.com/karmajakk/lol-vr-3d), shows these credits in the
 headset too ("VR controls", "Credits & Requirements").
 
+## Disclaimer
+
+Lands of Lore VR is a free, open-source, non-commercial fan modification. This project is not
+affiliated with, authorized, maintained, sponsored, or endorsed by Electronic Arts (EA), Westwood
+Studios, or Virgin Interactive. All trademarks and copyrights belong to their respective owners.
+
+No copyrighted game assets are included in this repository or its releases. To use this mod, you
+must supply your own legally acquired copy of *Lands of Lore: The Throne of Chaos* (such as the
+version available on GOG.com).
+
 ## License
 
 GPL version 3 or later, like ScummVM (see `COPYING`). *Lands of Lore* is a trademark of its
