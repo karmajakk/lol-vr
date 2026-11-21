@@ -145,6 +145,15 @@ ambient sound is the fireplace, off by default (keyboard, "Fire" button).
 - `keystore/debug.keystore`: a public test signing key, only used so updates can be installed
   over the previous version. It protects nothing.
 
+## Thanks
+
+To the [ScummVM](https://www.scummvm.org/) team, whose engine runs the game, and to
+[KForestland](https://github.com/KForestland) for
+[lands-of-lore-1-re](https://github.com/KForestland/lands-of-lore-1-re), the documentation of
+Lands of Lore's formats and rules that the VR mods rely on. Thanks for their hard work. The 3D
+dungeon version, [lol-vr-3d](https://github.com/karmajakk/lol-vr-3d), shows these credits in the
+headset too ("VR controls", "Credits & Requirements").
+
 ## License
 
 GPL version 3 or later, like ScummVM (see `COPYING`). *Lands of Lore* is a trademark of its
