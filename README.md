@@ -147,12 +147,8 @@ ambient sound is the fireplace, off by default (keyboard, "Fire" button).
 
 ## Thanks
 
-To the [ScummVM](https://www.scummvm.org/) team, whose engine runs the game, and to
-[KForestland](https://github.com/KForestland) for
-[lands-of-lore-1-re](https://github.com/KForestland/lands-of-lore-1-re), the documentation of
-Lands of Lore's formats and rules that the VR mods rely on. Thanks for their hard work. The 3D
-dungeon version, [lol-vr-3d](https://github.com/karmajakk/lol-vr-3d), shows these credits in the
-headset too ("VR controls", "Credits & Requirements").
+To the [ScummVM](https://www.scummvm.org/) team, whose engine runs the game. Thanks for their
+hard work.
 
 ## Disclaimer
 
@@ -166,6 +162,9 @@ version available on GOG.com).
 
 ## License
 
-GPL version 3 or later, like ScummVM (see `COPYING`). *Lands of Lore* is a trademark of its
+GPL version 3 or later, like ScummVM (see `COPYING`). Third-party components (ScummVM, OpenXR
+loader, Android NDK glue, stb_image, DejaVu font) and their licenses are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the texts are also inside the APK
+(`assets/licenses/`). *Lands of Lore* is a trademark of its
 respective owners; this project is not affiliated with Westwood, Electronic Arts or the ScummVM
 team.

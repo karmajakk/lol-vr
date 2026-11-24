@@ -3,6 +3,12 @@
 Format: [semantic versioning](https://semver.org/). While the number starts with 0, the project
 is in development and anything may still change.
 
+## [0.12.1] — Licenses
+
+- Third-party components and their licenses listed in `THIRD_PARTY_NOTICES.md`; the license
+  texts (project, ScummVM, OpenXR loader, Android NDK glue, DejaVu font) are packaged in the APK
+  under `assets/licenses/`. Credits: ScummVM.
+
 ## [0.12.0] — X is a right click
 
 - X now makes a right click where you aim: drink a potion, use an item, like the right mouse
